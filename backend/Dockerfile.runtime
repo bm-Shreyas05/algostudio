@@ -1,0 +1,26 @@
+# The sandbox runtime image.
+#
+# This is the layer that actually holds (docs/06-sandbox.md): the in-process
+# import allowlist and builtins denylist are defense in depth, but CPython
+# cannot be sandboxed in-process. Any multi-user deployment must run with
+# ALGOSTUDIO_SANDBOX=docker so that this image, not the Python policy module,
+# is the boundary.
+#
+# Build:  docker build -f backend/Dockerfile.runtime -t algostudio-runtime:latest backend
+FROM python:3.12-slim
+
+RUN useradd -u 65534 -M runner 2>/dev/null || true
+
+WORKDIR /opt
+COPY algostudio/core /opt/algostudio/core
+COPY algostudio/runtime /opt/algostudio/runtime
+COPY algostudio/languages /opt/algostudio/languages
+COPY algostudio/__init__.py /opt/algostudio/__init__.py
+
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 PYTHONPATH=/opt
+
+USER 65534:65534
+
+# The job directory is bind-mounted at /job by DockerSandbox.
+ENTRYPOINT ["python", "-I", "-B", "/opt/algostudio/runtime/child_main.py"]
+CMD ["/job"]

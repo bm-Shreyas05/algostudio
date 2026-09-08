@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "algostudio"
+version = "1.0.0"
+description = "Event-sourced program execution model for visualization, time travel and grounded explanation"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.110",
+  "uvicorn[standard]>=0.27",
+]
+
+[project.optional-dependencies]
+ai = ["anthropic>=0.40"]
+dev = ["pytest>=8", "hypothesis>=6", "httpx>=0.27", "ruff>=0.6", "mypy>=1.11"]
+
+[tool.setuptools.packages.find]
+include = ["algostudio*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+  "docker: requires a working Docker daemon",
+  "slow: benchmark or corpus-wide",
+]
+
+[tool.ruff]
+line-length = 92
+target-version = "py311"
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true

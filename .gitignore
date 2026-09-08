@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Node
+node_modules/
+frontend/dist/
+*.tsbuildinfo
+
+# AlgoStudio runtime data: execution recordings and the metadata database.
+# An execution is a directory (see docs/01 §F.4) and they are regenerable, so
+# they are deliberately not tracked.
+var/
+*.db
+*.db-wal
+*.db-shm
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Local overrides
+.env
+.env.local

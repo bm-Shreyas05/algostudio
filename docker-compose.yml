@@ -1,0 +1,27 @@
+# Development stack. The runtime image is built separately and is *not* a
+# service: DockerSandbox spawns a throwaway container per execution with
+# --network none, a read-only rootfs and dropped capabilities.
+services:
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.api
+    environment:
+      ALGOSTUDIO_SANDBOX: docker
+      ALGOSTUDIO_DATA: /data
+    volumes:
+      - ./var:/data
+      - /var/run/docker.sock:/var/run/docker.sock   # to spawn sandbox containers
+    ports:
+      - "8000:8000"
+
+  web:
+    image: node:20-slim
+    working_dir: /app
+    command: sh -c "npm install && npm run dev -- --host"
+    volumes:
+      - ./frontend:/app
+    ports:
+      - "5173:5173"
+    depends_on:
+      - api
