@@ -18,7 +18,7 @@ from typing import Any, Callable
 from ..core.events import Event, EventType, Loc
 from .model import (
     ANNOTATION_TTL, INFINITE_TTL, Annotation, CallRecord, ExceptionInfo,
-    ExecutionState, Frame, LoopState,
+    ExecutionState, Frame, LoopState, annotation_subject,
 )
 
 Handler = Callable[[ExecutionState, Event], None]
@@ -561,6 +561,7 @@ def _f_algorithm(s: ExecutionState, ev: Event) -> None:
         hi=_int_or_none(args.get("hi")),
         value=args,
         ttl=ANNOTATION_TTL.get(name, INFINITE_TTL),
+        subject=annotation_subject(name, args),
     )
     s.annotations[ev.id] = ann
 

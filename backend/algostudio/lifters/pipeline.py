@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Sequence
 
-from ..core.events import Event
+from ..core.events import Event, EventType
 from .base import LiftContext, Lifter
 from .detectors import DEFAULT_LIFTERS
 
@@ -39,8 +39,62 @@ class LifterPipeline:
                     produced = []
                 if produced:
                     out.extend(produced)
-        return out
+        return _drop_redundant(out)
 
     @property
     def ids(self) -> list[str]:
         return [l.id for l in self.lifters]
+
+
+#: How far apart a declared and an inferred event may be and still describe the
+#: same operation.  ``visited.add(u)`` and ``algo.visit(u)`` are adjacent lines.
+DUPLICATE_SPAN = 12
+
+
+def _drop_redundant(events: list[Event]) -> list[Event]:
+    """Remove lifted events that duplicate one the code already declared.
+
+    A lifter is a streaming state machine, so it cannot know that two lines
+    later the program will call ``algo.visit`` for the node it just inferred a
+    visit for.  Dijkstra does exactly that -- ``visited.add(u)`` then
+    ``algo.visit(u)`` -- which produced two events per visit, two annotations on
+    the same node, and a "visits" metric of 12 for a six-node graph.
+
+    Declared semantics win: the author said what they meant.
+    """
+    declared: dict[tuple[str, str], list[int]] = {}
+    for index, ev in enumerate(events):
+        if ev.type is not EventType.ALGORITHM_EVENT:
+            continue
+        if ev.meta.get("origin") != "semantic":
+            continue
+        key = (ev.payload.get("name", ""), _subject(ev))
+        declared.setdefault(key, []).append(index)
+
+    if not declared:
+        return events
+
+    out: list[Event] = []
+    for index, ev in enumerate(events):
+        if (
+            ev.type is EventType.ALGORITHM_EVENT
+            and ev.meta.get("origin") == "lifted"
+        ):
+            key = (ev.payload.get("name", ""), _subject(ev))
+            nearby = declared.get(key)
+            if nearby and any(abs(index - at) <= DUPLICATE_SPAN for at in nearby):
+                continue
+        out.append(ev)
+    return out
+
+
+def _subject(ev: Event) -> str:
+    """The thing an algorithm event is about, as a comparable string."""
+    args = ev.payload.get("args") or {}
+    for key in ("node", "value", "target", "v", "index"):
+        if key in args:
+            value = args[key]
+            if isinstance(value, dict):
+                value = value.get("v", value.get("r"))
+            return f"{key}={value}"
+    return ""

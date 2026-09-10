@@ -200,6 +200,12 @@ class LinkedStructureDetector:
             return None
         cls = record.get("cls")
         fields = record.get("fields") or {}
+        # An interior node scores far lower than a root.  Without this, a
+        # thirteen-node tree produced thirteen equally-ranked cards, and the one
+        # the canvas showed was whichever subtree happened to sort first --
+        # never the whole tree.
+        root_bonus = 0.0 if _has_parent(ref, cls, state) else 0.25
+        reach = _reachable_same_class(ref, cls, state)
         self_links = [
             name for name, value in fields.items()
             if isinstance(value, dict) and value.get("k") == "ref"
@@ -215,21 +221,54 @@ class LinkedStructureDetector:
         for pair in self.TREE_FIELDS:
             if pair <= candidates:
                 return ShapeMatch(
-                    "tree", 0.88,
-                    f"{cls} objects linked through {'/'.join(sorted(pair))}",
-                    {"class": cls, "children": sorted(pair)},
+                    "tree", 0.62 + root_bonus,
+                    f"{cls} tree of {reach} nodes linked through "
+                    f"{'/'.join(sorted(pair))}"
+                    + ("" if root_bonus else " (a subtree)"),
+                    {"class": cls, "children": sorted(pair), "size": reach},
                 )
         if len(candidates) == 1 or set(self_links) <= {"next", "nxt", "succ"}:
             field_name = self_links[0]
             return ShapeMatch(
-                "linked-list", 0.82,
-                f"{cls} objects chained through .{field_name}",
-                {"class": cls, "next": field_name},
+                "linked-list", 0.58 + root_bonus,
+                f"{cls} chain of {reach} nodes through .{field_name}"
+                + ("" if root_bonus else " (starting mid-chain)"),
+                {"class": cls, "next": field_name, "size": reach},
             )
         return ShapeMatch(
-            "tree", 0.6, f"{cls} objects with {len(self_links)} self-references",
-            {"class": cls, "children": sorted(candidates)},
+            "tree", 0.4 + root_bonus,
+            f"{cls} objects with {len(self_links)} self-references",
+            {"class": cls, "children": sorted(candidates), "size": reach},
         )
+
+
+def _has_parent(ref: str, cls: Any, state: ExecutionState) -> bool:
+    """Is this object referenced as a field of another object of its class?"""
+    for other_ref, other in state.heap.items():
+        if other_ref == ref or other.get("cls") != cls:
+            continue
+        for value in (other.get("fields") or {}).values():
+            if isinstance(value, dict) and value.get("k") == "ref" and value["r"] == ref:
+                return True
+    return False
+
+
+def _reachable_same_class(ref: str, cls: Any, state: ExecutionState) -> int:
+    """How many nodes of the same class hang off this one, including itself."""
+    seen: set[str] = set()
+    stack = [ref]
+    while stack and len(seen) < 500:
+        current = stack.pop()
+        if current in seen:
+            continue
+        record = state.heap.get(current)
+        if record is None or record.get("cls") != cls:
+            continue
+        seen.add(current)
+        for value in (record.get("fields") or {}).values():
+            if isinstance(value, dict) and value.get("k") == "ref":
+                stack.append(value["r"])
+    return len(seen)
 
 
 class TableDetector:

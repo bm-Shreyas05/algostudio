@@ -448,3 +448,128 @@ kbd {
   padding: 0 5px; font-size: 11px;
   font-family: ui-monospace, Consolas, monospace; color: var(--fg);
 }
+
+/* ============================================================ focus strip */
+/* The headline: what the algorithm is doing right now, in words. */
+.focus-strip {
+  flex: none;
+  padding: 8px 12px 7px;
+  background: var(--bg-2);
+  border-bottom: 1px solid var(--border);
+  border-left: 3px solid var(--edge);
+}
+.focus-strip.tone-algorithm { border-left-color: var(--accent-relax); }
+.focus-strip.tone-data      { border-left-color: var(--accent-changed); }
+.focus-strip.tone-call      { border-left-color: var(--accent-created); }
+.focus-strip.tone-flow      { border-left-color: var(--accent); }
+.focus-strip.tone-error     { border-left-color: var(--bad); }
+.focus-main { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.focus-headline {
+  font-size: 15px; font-weight: 600; letter-spacing: 0.1px;
+  font-family: ui-monospace, Consolas, monospace;
+}
+.tone-algorithm .focus-headline { color: var(--accent-relax); }
+.tone-data .focus-headline      { color: var(--accent-changed); }
+.tone-call .focus-headline      { color: var(--accent-created); }
+.tone-error .focus-headline     { color: var(--bad); }
+.focus-detail { font-size: 12px; color: var(--muted); }
+.focus-meta {
+  display: flex; gap: 12px; align-items: baseline; margin-top: 3px;
+  font-size: 11px; color: var(--muted); flex-wrap: wrap;
+}
+.focus-stmt {
+  font-size: 11.5px; color: var(--fg); opacity: 0.75;
+  background: var(--bg-3); padding: 1px 6px; border-radius: 4px;
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.focus-counters {
+  display: flex; gap: 14px; margin-top: 5px; font-size: 11px; color: var(--muted);
+}
+.focus-counters b { color: var(--fg); font-size: 12px; }
+
+/* ============================================================ graph view */
+/* Cap the drawing height so the whole graph fits the card instead of running
+   off the bottom; preserveAspectRatio letterboxes it rather than distorting. */
+.graph-view svg, .tree-view svg, .calltree-view svg {
+  max-height: min(46vh, 380px);
+  display: block;
+}
+
+.gv-edge {
+  stroke: var(--edge);
+  stroke-width: 1.2;
+  transition: stroke 0.15s, stroke-width 0.15s;
+}
+.gv-edge.hot { stroke: var(--accent-relax); stroke-width: 2.6; }
+
+/* The route is dashed and never solid: it connects nodes in *visit order*,
+   which for a breadth-first search is not the same as an edge. */
+.gv-trail {
+  stroke: var(--accent-visited);
+  stroke-width: 2;
+  stroke-dasharray: 5 4;
+  opacity: 0.75;
+  animation: gv-flow 1s linear infinite;
+}
+.gv-trail.jump { opacity: 0.35; stroke-dasharray: 2 5; }
+@keyframes gv-flow { to { stroke-dashoffset: -18; } }
+
+.gv-circle {
+  fill: var(--node);
+  stroke: var(--edge);
+  stroke-width: 1;
+  transition: fill 0.18s, stroke 0.18s, stroke-width 0.18s;
+}
+.gv-node.visited  .gv-circle { fill: var(--accent-visited); stroke: var(--accent-visited); }
+.gv-node.frontier .gv-circle { fill: #1d3350; stroke: var(--accent-frontier); stroke-width: 2; }
+.gv-node.current  .gv-circle { fill: var(--accent-compare); stroke: #fff; stroke-width: 2.5; }
+.gv-halo {
+  fill: none; stroke: var(--accent-compare); stroke-width: 2; opacity: 0.5;
+  animation: gv-pulse 1.4s ease-out infinite;
+}
+@keyframes gv-pulse {
+  0%   { r: 18; opacity: 0.7; }
+  100% { r: 27; opacity: 0; }
+}
+.gv-rank-bg { fill: var(--bg); stroke: var(--accent-visited); stroke-width: 1; }
+.gv-rank { fill: var(--accent-visited); font-size: 9px; font-weight: 700; }
+.gv-cursor {
+  fill: var(--accent-compare); font-size: 10px; font-weight: 700;
+  font-family: ui-monospace, Consolas, monospace;
+}
+
+.gv-legend {
+  display: flex; flex-wrap: wrap; gap: 14px;
+  margin-top: 8px; padding-top: 7px;
+  border-top: 1px solid var(--border);
+  font-size: 10.5px; color: var(--muted);
+}
+.gv-legend span { display: flex; align-items: center; gap: 5px; }
+.gv-legend b { color: var(--accent-visited); }
+.gv-legend i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+.gv-legend i.current  { background: var(--accent-compare); }
+.gv-legend i.visited  { background: var(--accent-visited); }
+.gv-legend i.frontier { background: #1d3350; border: 1.5px solid var(--accent-frontier); }
+.gv-legend i.trail    { background: none; border-top: 2px dashed var(--accent-visited); border-radius: 0; height: 0; width: 14px; }
+.gv-legend i.path     { background: none; border-top: 2px solid var(--accent-compare); border-radius: 0; height: 0; width: 14px; }
+
+/* ============================================================= tree view */
+.tv-edge {
+  stroke: var(--edge); stroke-width: 1.2;
+  transition: stroke 0.18s, stroke-width 0.18s;
+}
+.tv-edge.on-path { stroke: var(--accent-compare); stroke-width: 2.4; }
+.tv-circle {
+  fill: var(--node); stroke: var(--edge); stroke-width: 1;
+  transition: fill 0.18s, stroke 0.18s;
+}
+.tv-node.on-path .tv-circle { stroke: var(--accent-compare); stroke-width: 2; }
+.tv-node.cursor  .tv-circle { fill: var(--accent-compare); stroke: #fff; stroke-width: 2.5; }
+.tv-halo {
+  fill: none; stroke: var(--accent-compare); stroke-width: 2; opacity: 0.5;
+  animation: gv-pulse 1.4s ease-out infinite;
+}
+.tv-cursor-label {
+  fill: var(--accent-compare); font-size: 10px; font-weight: 700;
+  font-family: ui-monospace, Consolas, monospace;
+}

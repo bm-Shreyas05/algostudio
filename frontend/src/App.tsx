@@ -3,6 +3,7 @@ import { api } from "./api/client";
 import type { AlgorithmPlugin, EncodedValue } from "./api/types";
 import type { ChangedBinding } from "./components/Panels";
 import { AIPanel } from "./components/AIPanel";
+import { FocusStrip } from "./components/FocusStrip";
 import {
   AnalyticsPanel, CallStackPanel, ConsolePanel, TimelinePanel, VariablesPanel,
 } from "./components/Panels";
@@ -135,6 +136,12 @@ export default function App() {
     [algorithms, selectedAlgorithm],
   );
 
+  const statement = useMemo(() => {
+    const line = state.current_loc?.line ?? 0;
+    const lines = source.split(/\r?\n/);
+    return line >= 1 && line <= lines.length ? lines[line - 1].trim() : "";
+  }, [source, state.current_loc]);
+
   const issues = bundle?.summary.capability_report.issues ?? [];
   const lastStep = timeline?.lastStep ?? 0;
   const toggleMax = (id: PaneId) => () =>
@@ -177,6 +184,14 @@ export default function App() {
         maximized={maximized === "canvas"}
         onToggleMaximize={toggleMax("canvas")}
       />
+      {bundle && (
+        <FocusStrip
+          state={state}
+          events={bundle.events}
+          step={state.step}
+          statement={statement}
+        />
+      )}
       <div className="canvas-body">
         {!bundle && (
           <div className="canvas-empty">
@@ -222,6 +237,7 @@ export default function App() {
                 object={state.heap[plan.ref]}
                 heap={state.heap}
                 annotations={annotationsFor(annotations, plan.ref)}
+                allAnnotations={annotations}
                 state={state}
                 descriptor={plan}
               />

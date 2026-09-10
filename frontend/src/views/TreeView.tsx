@@ -1,11 +1,11 @@
 import { useMemo } from "react";
-import { treeLayout, type TreeNodeShape } from "../lib/layout";
+import { treeLayout, type PlacedNode, type TreeNodeShape } from "../lib/layout";
 import { preview } from "../lib/format";
 import type { HeapObject } from "../api/types";
-import { MARK_COLORS, type ViewProps } from "./types";
+import { MARK_COLORS, nodeAnnotations, type ViewProps } from "./types";
 
 /** Layered tree over objects linked by the detected child fields. */
-export function TreeView({ object, heap, descriptor, annotations }: ViewProps) {
+export function TreeView({ object, heap, descriptor, allAnnotations, state }: ViewProps) {
   const childFields = (descriptor.props.children as string[]) ?? ["left", "right"];
 
   const roots = useMemo<TreeNodeShape[]>(() => {
@@ -35,35 +35,89 @@ export function TreeView({ object, heap, descriptor, annotations }: ViewProps) {
   }, [object, heap, childFields]);
 
   const { nodes, width, height } = useMemo(() => treeLayout(roots), [roots]);
+  const byId = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
+
   const marks = new Map<string, string>();
-  for (const a of annotations) {
+  for (const a of nodeAnnotations(allAnnotations)) {
     const color = MARK_COLORS[a.kind];
     if (color && a.target_ref) marks.set(a.target_ref, color);
   }
-  const byId = new Map(nodes.map((n) => [n.id, n]));
+
+  /* Which nodes are variables currently pointing at? That is where the
+     algorithm *is*, and it needs no annotation to work out -- a recursive
+     `insert(node, value)` puts `node` on the frame, and the frame is state. */
+  const cursors = useMemo(() => {
+    const frame = state.frames[state.frames.length - 1];
+    const out = new Map<string, string[]>();
+    if (!frame) return out;
+    for (const [name, value] of Object.entries(frame.locals)) {
+      if (!value || (value as any).k !== "ref") continue;
+      const ref = (value as any).r as string;
+      if (!byId.has(ref)) continue;
+      (out.get(ref) ?? out.set(ref, []).get(ref)!).push(name);
+    }
+    return out;
+  }, [state.frames, byId]);
+
+  /* The route from the root down to the deepest cursor: the search path. */
+  const pathRefs = useMemo(() => {
+    const deepest = [...cursors.keys()]
+      .map((ref) => byId.get(ref))
+      .filter((n): n is NonNullable<typeof n> => Boolean(n))
+      .sort((a, b) => b.depth - a.depth)[0];
+    const path = new Set<string>();
+    let node: PlacedNode | undefined = deepest;
+    while (node) {
+      path.add(node.id);
+      node = node.parent ? byId.get(node.parent) : undefined;
+    }
+    return path;
+  }, [cursors, byId]);
 
   if (!nodes.length) return <div className="view empty">no nodes</div>;
 
   return (
     <div className="view tree-view">
-      <svg viewBox={`0 0 ${width} ${height}`} width="100%" height={Math.min(height, 320)}>
-        {nodes.map((node) =>
-          node.parent && byId.has(node.parent) ? (
+      <svg viewBox={`0 0 ${width} ${height}`} width="100%" preserveAspectRatio="xMidYMid meet">
+        {nodes.map((node) => {
+          const parent = node.parent ? byId.get(node.parent) : undefined;
+          if (!parent) return null;
+          const onPath = pathRefs.has(node.id) && pathRefs.has(parent.id);
+          return (
             <line
               key={`e-${node.id}`}
-              x1={byId.get(node.parent)!.x} y1={byId.get(node.parent)!.y}
-              x2={node.x} y2={node.y}
-              stroke="var(--edge)" strokeWidth={1.2}
+              x1={parent.x} y1={parent.y} x2={node.x} y2={node.y}
+              className={`tv-edge${onPath ? " on-path" : ""}`}
             />
-          ) : null,
-        )}
-        {nodes.map((node) => (
-          <g key={node.id} transform={`translate(${node.x},${node.y})`}>
-            <circle r={15} fill={marks.get(node.id) ?? "var(--node)"} stroke="var(--edge)" />
-            <text className="node-label" textAnchor="middle" dy="4">{node.label}</text>
-          </g>
-        ))}
+          );
+        })}
+        {nodes.map((node) => {
+          const names = cursors.get(node.id);
+          const isCursor = Boolean(names);
+          const onPath = pathRefs.has(node.id);
+          const marked = marks.get(node.id);
+          return (
+            <g key={node.id} transform={`translate(${node.x},${node.y})`}
+               className={`tv-node${isCursor ? " cursor" : onPath ? " on-path" : ""}`}>
+              {isCursor && <circle r={21} className="tv-halo" />}
+              <circle r={15} className="tv-circle"
+                      style={marked ? { fill: marked } : undefined} />
+              <text className="node-label" textAnchor="middle" dy="4">{node.label}</text>
+              {names && (
+                <text className="tv-cursor-label" textAnchor="middle" dy="-22">
+                  {names.join(", ")}
+                </text>
+              )}
+            </g>
+          );
+        })}
       </svg>
+      {cursors.size > 0 && (
+        <div className="gv-legend">
+          <span><i className="current" /> where the algorithm is</span>
+          <span><i className="path" /> path from the root</span>
+        </div>
+      )}
     </div>
   );
 }

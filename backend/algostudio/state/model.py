@@ -107,13 +107,46 @@ class LoopState:
         }
 
 
+#: Which argument identifies *what an annotation is about*.  Without this, every
+#: ``visit`` shares the key ("visit", "visit", ref) and only the most recent one
+#: survives -- so a graph could never show more than one visited node, and the
+#: traversal path was invisible.  A pointer is deliberately absent: a pointer
+#: named "mid" *should* supersede the previous "mid".
+SUBJECT_ARGS: dict[str, tuple[str, ...]] = {
+    "visit": ("node",),
+    "discover": ("node",),
+    "mark": ("target",),
+    "unmark": ("target",),
+    "highlight": ("index",),
+    "compare": ("i", "j"),
+    "swap": ("i", "j"),
+    "relax": ("u", "v"),
+    "enqueue": ("value",),
+    "push": ("value",),
+}
+
+
+def annotation_subject(kind: str, args: dict[str, Any]) -> str:
+    """A stable identity for the thing an annotation refers to."""
+    keys = SUBJECT_ARGS.get(kind)
+    if not keys:
+        return ""
+    parts: list[str] = []
+    for key in keys:
+        value = args.get(key)
+        if isinstance(value, dict):
+            value = value.get("v", value.get("r"))
+        parts.append("" if value is None else str(value))
+    return "|".join(parts)
+
+
 @dataclass(slots=True)
 class Annotation:
     """A visual hint produced by an ``ALGORITHM_EVENT``.
 
     Keyed by the id of the event that created it, so application and inversion
     are exact: an annotation is never *replaced*, only superseded by a later one
-    with the same (kind, label, target).  Views resolve the live set.
+    with the same (kind, label, target, subject).  Views resolve the live set.
     """
 
     event_id: int
@@ -127,15 +160,17 @@ class Annotation:
     hi: int | None = None
     value: Any = None
     ttl: int = INFINITE_TTL
+    subject: str = ""
 
-    def key(self) -> tuple[str, str, str | None]:
-        return (self.kind, self.label, self.target_ref)
+    def key(self) -> tuple[str, str, str | None, str]:
+        return (self.kind, self.label, self.target_ref, self.subject)
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "event_id": self.event_id, "step": self.step, "kind": self.kind,
             "target_ref": self.target_ref, "label": self.label, "color": self.color,
             "index": self.index, "lo": self.lo, "hi": self.hi, "value": self.value,
+            "subject": self.subject,
         }
 
 
@@ -308,15 +343,27 @@ class ExecutionState:
     # -- annotations --------------------------------------------------------
     def live_annotations(self) -> list[Annotation]:
         """The visible annotation set: newest per key, expired ones dropped."""
-        best: dict[tuple[str, str, str | None], Annotation] = {}
+        best: dict[tuple[str, str, str | None, str], Annotation] = {}
+        cancelled: dict[tuple[str | None, str], int] = {}
         for ann in self.annotations.values():
             if self.step - ann.step > ann.ttl:
+                continue
+            if ann.kind == "unmark":
+                slot = (ann.target_ref, ann.subject)
+                cancelled[slot] = max(cancelled.get(slot, -1), ann.step)
                 continue
             key = ann.key()
             current = best.get(key)
             if current is None or ann.step > current.step:
                 best[key] = ann
-        return sorted(best.values(), key=lambda a: a.step)
+        live = [
+            a for a in best.values()
+            if not (
+                a.kind == "mark"
+                and cancelled.get((a.target_ref, a.subject), -1) > a.step
+            )
+        ]
+        return sorted(live, key=lambda a: a.step)
 
     # -- serialization ------------------------------------------------------
     def to_dict(self, include_heap: bool = True) -> dict[str, Any]:

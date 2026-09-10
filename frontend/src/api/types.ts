@@ -98,6 +98,8 @@ export interface Annotation {
   hi: number | null;
   value: Record<string, any>;
   ttl: number;
+  /** Identifies what the annotation is about, so per-node marks do not collapse. */
+  subject?: string;
 }
 
 export interface CallRecord {

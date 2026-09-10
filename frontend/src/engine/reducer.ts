@@ -27,6 +27,28 @@ const ANNOTATION_TTL: Record<string, number> = {
   visit: INFINITE_TTL, pivot: INFINITE_TTL, partition: INFINITE_TTL,
 };
 
+/** Which argument identifies what an annotation is about. Mirrors
+ *  model.SUBJECT_ARGS: without it every `visit` shares one key and a graph can
+ *  only ever show its most recently visited node. */
+const SUBJECT_ARGS: Record<string, string[]> = {
+  visit: ["node"], discover: ["node"], mark: ["target"], unmark: ["target"],
+  highlight: ["index"], compare: ["i", "j"], swap: ["i", "j"],
+  relax: ["u", "v"], enqueue: ["value"], push: ["value"],
+};
+
+function annotationSubject(kind: string, args: Record<string, any>): string {
+  const keys = SUBJECT_ARGS[kind];
+  if (!keys) return "";
+  return keys
+    .map((key) => {
+      const value = args[key];
+      const scalar =
+        value && typeof value === "object" ? (value.v ?? value.r) : value;
+      return scalar === undefined || scalar === null ? "" : String(scalar);
+    })
+    .join("|");
+}
+
 const ANNOTATION_KINDS = new Set([
   "pointer", "region", "mark", "unmark", "highlight", "visit", "discover",
   "compare", "swap", "relax", "pivot", "partition", "note",
@@ -372,6 +394,7 @@ function forwardAlgorithm(s: ExecutionState, ev: AsEvent): void {
     index: intOrNull(args.index ?? args.i),
     lo: intOrNull(args.lo), hi: intOrNull(args.hi),
     value: args, ttl: ANNOTATION_TTL[name] ?? INFINITE_TTL,
+    subject: annotationSubject(name, args),
   };
   s.annotations[ev.id] = annotation;
 }
@@ -507,13 +530,25 @@ function intOrNull(v: any): number | null {
 /** The visible annotation set: newest per key, expired ones dropped. */
 export function liveAnnotations(s: ExecutionState): Annotation[] {
   const best = new Map<string, Annotation>();
+  const cancelled = new Map<string, number>();
   for (const ann of Object.values(s.annotations)) {
     if (s.step - ann.step > ann.ttl) continue;
-    const key = `${ann.kind}|${ann.label}|${ann.target_ref}`;
+    if (ann.kind === "unmark") {
+      const slot = `${ann.target_ref}|${ann.subject ?? ""}`;
+      cancelled.set(slot, Math.max(cancelled.get(slot) ?? -1, ann.step));
+      continue;
+    }
+    const key = `${ann.kind}|${ann.label}|${ann.target_ref}|${ann.subject ?? ""}`;
     const current = best.get(key);
     if (!current || ann.step > current.step) best.set(key, ann);
   }
-  return [...best.values()].sort((a, b) => a.step - b.step);
+  return [...best.values()]
+    .filter((a) => {
+      if (a.kind !== "mark") return true;
+      const slot = `${a.target_ref}|${a.subject ?? ""}`;
+      return (cancelled.get(slot) ?? -1) <= a.step;
+    })
+    .sort((a, b) => a.step - b.step);
 }
 
 /** Friendly names for heap objects, derived from live bindings. */
