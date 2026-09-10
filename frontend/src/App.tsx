@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "./api/client";
 import type { AlgorithmPlugin, EncodedValue } from "./api/types";
+import type { ChangedBinding } from "./components/Panels";
 import { AIPanel } from "./components/AIPanel";
 import {
   AnalyticsPanel, CallStackPanel, ConsolePanel, TimelinePanel, VariablesPanel,
 } from "./components/Panels";
 import { SourceView } from "./components/SourceView";
 import { PaneHead, Split } from "./components/Split";
+import { Transport } from "./components/Transport";
 import { liveAnnotations } from "./engine/reducer";
 import { useExecution } from "./store/useExecution";
 import { resolveView, VIEW_LABELS } from "./views/registry";
@@ -44,12 +46,22 @@ export default function App() {
 
   const { bundle, state, timeline } = exec;
 
-  /* ---- previous frame locals, for the change highlight ------------------ */
-  const previousLocals = useMemo<Record<string, EncodedValue>>(() => {
-    if (!timeline || state.step <= 0) return {};
-    const before = timeline.stateAt(state.step - 1);
-    return before.frames[before.frames.length - 1]?.locals ?? {};
-  }, [timeline, state.step]);
+  /* ---- which binding this step changed ---------------------------------
+     Read straight off the current event. The previous version rebuilt the whole
+     prior state (checkpoint clone + replay) on every render just to diff two
+     dictionaries, which made playback roughly ten times slower than the speed
+     setting asked for. The event already says exactly what changed. */
+  const changed = useMemo<ChangedBinding>(() => {
+    const ev = bundle && state.step >= 0 ? bundle.events[state.step] : null;
+    if (!ev) return null;
+    if (ev.type === "VARIABLE_WRITTEN") {
+      return { name: ev.payload.name, old: ev.payload.old as EncodedValue, created: false };
+    }
+    if (ev.type === "VARIABLE_CREATED") {
+      return { name: ev.payload.name, old: null, created: true };
+    }
+    return null;
+  }, [bundle, state.step]);
 
   const annotations = useMemo(() => liveAnnotations(state), [state]);
 
@@ -91,6 +103,12 @@ export default function App() {
         exec.setTransport((t) => ({ ...t, playing: !t.playing }));
       } else if (e.key === "Escape" && maximized) {
         setMaximized(null);
+      } else if (e.key === "Home") {
+        e.preventDefault();
+        exec.seek(0);
+      } else if (e.key === "End") {
+        e.preventDefault();
+        exec.seek(exec.timeline?.lastStep ?? 0);
       }
     };
     window.addEventListener("keydown", onKey);
@@ -111,6 +129,11 @@ export default function App() {
       .filter((v) => state.heap[v.ref])
       .slice(0, 6);
   }, [bundle, pinned, state]);
+
+  const plugin = useMemo(
+    () => algorithms.find((a) => a.id === selectedAlgorithm) ?? null,
+    [algorithms, selectedAlgorithm],
+  );
 
   const issues = bundle?.summary.capability_report.issues ?? [];
   const lastStep = timeline?.lastStep ?? 0;
@@ -155,7 +178,23 @@ export default function App() {
         onToggleMaximize={toggleMax("canvas")}
       />
       <div className="canvas-body">
-        {!bundle && <div className="empty pad">Run a program to see its execution.</div>}
+        {!bundle && (
+          <div className="canvas-empty">
+            <h3>Nothing recorded yet</h3>
+            <p>
+              Press <strong>▶ Run</strong> to execute the code on the left, or pick
+              an algorithm from the menu above. Playback starts automatically.
+            </p>
+            <ul>
+              <li>Views are chosen from the shape of the data at runtime — an
+                  adjacency map becomes a graph, a list of numbers becomes an array.</li>
+              <li><kbd>←</kbd> <kbd>→</kbd> step, <kbd>space</kbd> plays,
+                  <kbd>Esc</kbd> restores a maximized panel.</li>
+              <li>Drag any divider to resize, or press <strong>⛶</strong> on a panel
+                  to give it the whole window.</li>
+            </ul>
+          </div>
+        )}
         {plans.map((plan) => {
           const View = resolveView(plan.view);
           return (
@@ -218,7 +257,7 @@ export default function App() {
         </button>
       </div>
       {rightTab === "variables" && (
-        <VariablesPanel state={state} previousLocals={previousLocals} onInspect={inspectVariable} />
+        <VariablesPanel state={state} changed={changed} onInspect={inspectVariable} />
       )}
       {rightTab === "callstack" && <CallStackPanel state={state} />}
       {rightTab === "calltree" && (
@@ -229,16 +268,6 @@ export default function App() {
 
   const bottomPane = (
     <section className="pane bottom">
-      <div className="scrubber">
-        <input
-          type="range"
-          min={0}
-          max={Math.max(0, lastStep)}
-          value={Math.max(0, state.step)}
-          onChange={(e) => exec.seek(+e.target.value)}
-          disabled={!bundle}
-        />
-      </div>
       <div className="pane-head tabs">
         {(["timeline", "console", "analytics", "ai"] as BottomTab[]).map((tab) => (
           <button key={tab} className={bottomTab === tab ? "on" : ""}
@@ -304,7 +333,8 @@ export default function App() {
               <optgroup key={category} label={category}>
                 {items.map((a) => (
                   <option key={a.id} value={a.id}>
-                    {a.name}{a.annotated ? "" : "  (un-annotated)"}
+                    {a.name}
+                    {a.complexity ? `  —  ${a.complexity.time}` : ""}
                   </option>
                 ))}
               </optgroup>
@@ -321,31 +351,13 @@ export default function App() {
         <button className="primary" onClick={doRun} disabled={exec.busy}>
           {exec.busy ? "Running…" : "▶ Run"}
         </button>
-        <button onClick={() => setEditing((v) => !v)} disabled={!bundle}>
-          {editing ? "Trace" : "Edit"}
+        <button
+          onClick={() => setEditing((v) => !v)}
+          disabled={!bundle}
+          title={editing ? "Show the recorded trace" : "Go back to editing the source"}
+        >
+          {editing ? "View trace" : "Edit code"}
         </button>
-
-        <div className="transport">
-          <button onClick={() => exec.seek(0)} title="Restart (no re-execution)">⏮</button>
-          <button onClick={() => exec.jump((tl, s) => tl.stepOut(s))} title="Step out">⤴</button>
-          <button onClick={exec.stepBack} title="Step back (←)">◀</button>
-          <button
-            className="play"
-            onClick={() => exec.setTransport((t) => ({ ...t, playing: !t.playing }))}
-            title="Play / pause (space)"
-          >
-            {exec.transport.playing ? "⏸" : "▶"}
-          </button>
-          <button onClick={exec.stepForward} title="Step forward (→)">▶</button>
-          <button onClick={() => exec.jump((tl, s) => tl.stepOver(s))} title="Step over">⤵</button>
-          <button onClick={() => exec.jump((tl, s) => tl.stepInto(s))} title="Step into">↘</button>
-          <button onClick={() => exec.seek(lastStep)} title="Jump to end">⏭</button>
-          <input
-            type="range" min={5} max={120} value={exec.transport.speed}
-            onChange={(e) => exec.setTransport((t) => ({ ...t, speed: +e.target.value }))}
-            title="playback speed"
-          />
-        </div>
 
         <div className="grow" />
         <div className="status">
@@ -365,6 +377,48 @@ export default function App() {
           {health && <span title={`sandbox: ${health.sandbox_mode}`}>{health.sandbox_mode}</span>}
         </div>
       </header>
+
+      <Transport
+        step={state.step}
+        lastStep={lastStep}
+        playing={exec.transport.playing}
+        speed={exec.transport.speed}
+        stepMode={exec.stepMode}
+        enabled={Boolean(bundle)}
+        onSeek={exec.seek}
+        onStepBack={exec.stepBack}
+        onStepForward={exec.stepForward}
+        onTogglePlay={() => exec.setTransport((t) => ({ ...t, playing: !t.playing }))}
+        onReplay={exec.replay}
+        onJumpEnd={() => exec.seek(lastStep)}
+        onStepOver={() => exec.jump((tl, st) => tl.stepOver(st))}
+        onStepInto={() => exec.jump((tl, st) => tl.stepInto(st))}
+        onStepOut={() => exec.jump((tl, st) => tl.stepOut(st))}
+        onSpeed={(speed) => exec.setTransport((t) => ({ ...t, speed }))}
+        onStepMode={exec.setStepMode}
+      />
+
+      {plugin && (
+        <div className="algo-strip">
+          <strong>{plugin.name}</strong>
+          <span className="muted">{plugin.description}</span>
+          {plugin.complexity && (
+            <span className="cx" title="as stated by the plugin author">
+              {plugin.complexity.time} time · {plugin.complexity.space} space
+            </span>
+          )}
+          <span
+            className={`origin-badge ${plugin.annotated ? "annotated" : "inferred"}`}
+            title={
+              plugin.annotated
+                ? "This source calls the algo.* API, so its swaps/compares/visits are declared explicitly."
+                : "This source has no annotations. Its swaps, comparisons and visits are recovered from the raw event stream by the lifters."
+            }
+          >
+            {plugin.annotated ? "annotated" : "semantics inferred"}
+          </span>
+        </div>
+      )}
 
       {/* ------------------------------------------------------- capability */}
       {bundle && issues.length > 0 && (

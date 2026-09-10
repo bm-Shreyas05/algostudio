@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   Analytics, AsEvent, EncodedValue, ExecutionState, Frame,
 } from "../api/types";
@@ -7,11 +7,16 @@ import {
 } from "../lib/format";
 
 /* ------------------------------------------------------------------ variables */
+/** What the current step did to a binding, taken straight from the event. */
+export type ChangedBinding =
+  | { name: string; old: EncodedValue | null; created: boolean }
+  | null;
+
 export function VariablesPanel({
-  state, previousLocals, onInspect,
+  state, changed, onInspect,
 }: {
   state: ExecutionState;
-  previousLocals: Record<string, EncodedValue>;
+  changed: ChangedBinding;
   onInspect: (name: string) => void;
 }) {
   const frame = state.frames[state.frames.length - 1];
@@ -19,18 +24,21 @@ export function VariablesPanel({
   const showGlobals = state.frames.length > 1;
 
   const row = (name: string, value: EncodedValue, scope: string) => {
-    const before = previousLocals[name];
-    const changed = before !== undefined && JSON.stringify(before) !== JSON.stringify(value);
-    const isNew = before === undefined;
+    const hit = changed && changed.name === name;
+    const wasWritten = Boolean(hit && !changed!.created);
+    const wasCreated = Boolean(hit && changed!.created);
     const ref = (value as any)?.k === "ref" ? (value as any).r : null;
     return (
-      <tr key={`${scope}-${name}`} className={changed ? "changed" : isNew ? "created" : undefined}>
+      <tr
+        key={`${scope}-${name}`}
+        className={wasWritten ? "changed" : wasCreated ? "created" : undefined}
+      >
         <td className="k" onClick={() => onInspect(name)} title="show where this changed">
           {name}
         </td>
         <td className="v">
-          {changed && (
-            <span className="old">{previewLive(before, state.heap, 18)} →</span>
+          {wasWritten && changed!.old && (
+            <span className="old">{previewLive(changed!.old, state.heap, 18)} →</span>
           )}{" "}
           {previewLive(value, state.heap, 34)}
           {ref && (
@@ -84,6 +92,9 @@ export function CallStackPanel({ state }: { state: ExecutionState }) {
 }
 
 /* ------------------------------------------------------------------- timeline */
+/** Fixed row height, so the virtualiser can map scroll offset to row index. */
+const ROW_HEIGHT = 18;
+
 export function TimelinePanel({
   events, step, onSeek,
 }: {
@@ -123,6 +134,42 @@ export function TimelinePanel({
     return CATEGORY_ORDER.filter((c) => seen.has(c));
   }, [events]);
 
+  // Only the rows near the viewport are mounted. Without this, every playback
+  // step re-rendered the entire event list -- 440 rows for Dijkstra, tens of
+  // thousands for a backtracking search -- and playback ran far below the
+  // requested speed because each step was waiting on layout.
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const [scrollTop, setScrollTop] = useState(0);
+  const [viewportHeight, setViewportHeight] = useState(320);
+
+  useEffect(() => {
+    const element = scrollRef.current;
+    if (!element) return;
+    const measure = () => setViewportHeight(element.clientHeight || 320);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
+  // Keep the current step in view while playing, but never fight the user: only
+  // scroll when the row has actually left the window.
+  useEffect(() => {
+    const element = scrollRef.current;
+    if (!element) return;
+    const index = rows.findIndex((r) => r.index === step);
+    if (index < 0) return;
+    const top = index * ROW_HEIGHT;
+    if (top < element.scrollTop || top > element.scrollTop + element.clientHeight - ROW_HEIGHT) {
+      element.scrollTop = Math.max(0, top - element.clientHeight / 2);
+    }
+  }, [step, rows]);
+
+  const overscan = 10;
+  const firstVisible = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - overscan);
+  const visibleCount = Math.ceil(viewportHeight / ROW_HEIGHT) + overscan * 2;
+  const windowed = rows.slice(firstVisible, firstVisible + visibleCount);
+
   return (
     <div className="panel-body timeline">
       <div className="timeline-controls">
@@ -143,22 +190,37 @@ export function TimelinePanel({
         />
         <span className="muted">{rows.length} shown</span>
       </div>
-      <div className="timeline-rows">
-        {rows.map(({ index, ev, text, cat }) => (
-          <div
-            key={index}
-            className={`trow cat-${cat}${index === step ? " current" : ""}${
-              ev.meta?.origin === "lifted" ? " lifted" : ""
-            }`}
-            style={{ paddingLeft: 6 + ev.depth * 12 }}
-            onClick={() => onSeek(index)}
-            title={ev.meta?.origin === "lifted" ? "inferred from generic events" : undefined}
-          >
-            <span className="tstep">{index}</span>
-            <span className="tline">{ev.loc?.line ?? ""}</span>
-            <span className="ttext">{text}</span>
-          </div>
-        ))}
+      <div
+        className="timeline-rows"
+        ref={scrollRef}
+        onScroll={(e) => setScrollTop((e.target as HTMLDivElement).scrollTop)}
+      >
+        {/* A spacer of the full height keeps the scrollbar honest while only a
+            window of rows is actually mounted. */}
+        <div style={{ height: rows.length * ROW_HEIGHT, position: "relative" }}>
+          {windowed.map(({ index, ev, text, cat }, i) => (
+            <div
+              key={index}
+              className={`trow cat-${cat}${index === step ? " current" : ""}${
+                ev.meta?.origin === "lifted" ? " lifted" : ""
+              }`}
+              style={{
+                position: "absolute",
+                top: (firstVisible + i) * ROW_HEIGHT,
+                left: 0,
+                right: 0,
+                height: ROW_HEIGHT,
+                paddingLeft: 6 + ev.depth * 12,
+              }}
+              onClick={() => onSeek(index)}
+              title={ev.meta?.origin === "lifted" ? "inferred from generic events" : undefined}
+            >
+              <span className="tstep">{index}</span>
+              <span className="tline">{ev.loc?.line ?? ""}</span>
+              <span className="ttext">{text}</span>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
