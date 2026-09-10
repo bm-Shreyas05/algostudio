@@ -17,6 +17,10 @@ import type {
 
 const INFINITE_TTL = 1e9;
 
+/** Never a useful label: `self` is bound in __init__, the earliest frame to
+ *  see the object, so it would otherwise claim the name of every instance. */
+const UNINFORMATIVE_NAMES = new Set(["self", "cls", "_"]);
+
 const ANNOTATION_TTL: Record<string, number> = {
   compare: 3, highlight: 3, swap: 3, relax: 4, discover: 6, note: 8,
   pointer: INFINITE_TTL, region: INFINITE_TTL, mark: INFINITE_TTL,
@@ -515,9 +519,18 @@ export function liveAnnotations(s: ExecutionState): Annotation[] {
 /** Friendly names for heap objects, derived from live bindings. */
 export function refNames(s: ExecutionState): Record<string, string> {
   const names: Record<string, string> = {};
-  for (const frame of [...Object.values(s.retired), ...s.frames]) {
+  // Active frames first, then retired oldest-first, first-write-wins. Mirrors
+  // ExecutionState.ref_names: last-write-wins let a recursive helper's `node`
+  // parameter rename every object it touched.
+  const retired = Object.keys(s.retired)
+    .map(Number)
+    .sort((a, b) => a - b)
+    .map((k) => s.retired[k]);
+  for (const frame of [...s.frames, ...retired]) {
     for (const [name, value] of Object.entries(frame.locals)) {
-      if (value && (value as any).k === "ref") names[(value as any).r] = name;
+      if (UNINFORMATIVE_NAMES.has(name)) continue;
+      const ref = value && (value as any).k === "ref" ? (value as any).r : null;
+      if (ref && !(ref in names)) names[ref] = name;
     }
   }
   return names;

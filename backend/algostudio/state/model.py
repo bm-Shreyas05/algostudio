@@ -22,6 +22,12 @@ from ..core.events import Loc
 
 INFINITE_TTL = 10 ** 9
 
+#: Binding names that are never what a reader calls the object. ``self`` is the
+#: worst offender: every object gets bound to it inside ``__init__``, which is
+#: usually the *earliest* frame to see it, so without this every node of a tree
+#: would be labelled "self".
+UNINFORMATIVE_NAMES = frozenset({"self", "cls", "_"})
+
 #: How long an annotation stays visible after the event that created it, by
 #: ``ALGORITHM_EVENT`` name.  Transient highlights decay; positional markers
 #: persist until superseded.
@@ -277,14 +283,26 @@ class ExecutionState:
         correct, so the invariant is free.
         """
         names: dict[str, str] = {}
-        # Retired frames first so an active binding wins the name, but an object
-        # created inside a function that has already returned still has one --
-        # otherwise `dist` inside dijkstra would look unreferenced at the end of
-        # the run and lose its place in the view plan.
-        for frame in list(self.retired.values()) + self.frames:
+        # Active frames first, then retired ones oldest-first, and never
+        # overwrite. Two reasons for that order:
+        #
+        #   * a live binding is the name the user is looking at in the variables
+        #     panel, so it should win;
+        #   * first-write-wins stops a recursive helper from renaming everything.
+        #     `insert(node, value)` runs once per level of a tree, so
+        #     last-write-wins labelled every node in the tree "node" instead of
+        #     naming the root after the variable that actually holds it.
+        #
+        # Retired frames are included at all so an object created inside a
+        # function that has returned still has a name -- otherwise `dist` inside
+        # dijkstra would look unreferenced once the run finished.
+        ordered = self.frames + [self.retired[k] for k in sorted(self.retired)]
+        for frame in ordered:
             for name, value in frame.locals.items():
+                if name in UNINFORMATIVE_NAMES:
+                    continue
                 if isinstance(value, dict) and value.get("k") == "ref":
-                    names[value["r"]] = name
+                    names.setdefault(value["r"], name)
         return names
 
     # -- annotations --------------------------------------------------------
