@@ -534,6 +534,12 @@ def _i_budget_exceeded(s: ExecutionState, ev: Event) -> None:
 _ANNOTATION_KINDS = {
     "pointer", "region", "mark", "unmark", "highlight", "visit", "discover",
     "compare", "swap", "relax", "pivot", "partition", "note",
+    # Container traffic.  These were being lifted and counted but never turned
+    # into annotations, so a stack, a queue or an accumulating result list had
+    # nothing highlighted -- the element that just moved was invisible.
+    "push", "pop", "enqueue", "dequeue",
+    # A value a program keeps *per node* -- a distance, an in-degree, a colour.
+    "nodevalue",
 }
 
 

@@ -276,7 +276,7 @@ class ExecutionService:
         final = self.state_at(execution_id, self.timeline(execution_id).last_step)
         final.step = state.step
         final.counters = state.counters
-        plans = self.resolver.resolve(final, hints)
+        plans = self.resolver.resolve(final, hints, current=state)
         return [p.to_dict() for p in plans]
 
     def analytics(self, execution_id: str) -> dict[str, Any]:

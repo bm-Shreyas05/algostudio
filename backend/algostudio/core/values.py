@@ -108,7 +108,17 @@ def scalar_of(value: Any) -> Any:
     if k == "none":
         return None
     if k in ("int", "float", "bool", "str"):
-        return value.get("v")
+        raw = value.get("v")
+        if raw is None and value.get("special"):
+            # inf / -inf / nan are not representable in JSON, so the encoder
+            # parks them in "special".  Returning None here made every numeric
+            # lifter skip the single most interesting relaxation in a
+            # shortest-path algorithm: the one that replaces infinity.
+            try:
+                return float(value["special"])
+            except (TypeError, ValueError):
+                return None
+        return raw
     return None
 
 

@@ -303,30 +303,46 @@ class RelaxLifter:
 
 
 class VisitLifter:
-    """Insertion into a set that is keyed by graph-like node identifiers.
+    """A graph node being recorded as reached.
 
-    Requires the added element to also appear as a key of some dict currently on
-    the heap -- the structural signal that it names a node rather than being an
-    arbitrary value.
+    Fires on two container idioms, because traversals are written both ways:
+    adding to a ``visited`` set, and appending to an ``order`` result list.
+    Either way the added element must also be a key of some dict on the heap --
+    that is the structural signal that it names a node rather than being an
+    arbitrary value, and it is what stops this firing on every list append in
+    every program.
+
+    A node is visited once, so repeat emissions for the same node are
+    suppressed; otherwise a traversal that both adds to ``visited`` and appends
+    to ``order`` would report each node twice and double its own metric.
     """
 
     id = "visit"
 
+    ADD_OPS = {"add", "append"}
+
+    def __init__(self) -> None:
+        self._seen: set[str] = set()
+
     def reset(self) -> None:
-        return None
+        self._seen.clear()
 
     def feed(self, ev: Event, ctx: LiftContext) -> list[Event]:
         if ev.type is not EventType.OBJECT_MUTATED:
             return []
-        if str(ev.payload.get("op", "")).split(".")[-1] != "add":
+        if str(ev.payload.get("op", "")).split(".")[-1] not in self.ADD_OPS:
             return []
         after = ev.payload.get("after") or {}
-        if after.get("t") not in ("set", "frozenset"):
+        if after.get("t") not in ("set", "frozenset", "list", "deque"):
             return []
         before_items = (ev.payload.get("before") or {}).get("items") or []
         value = _added_item(before_items, after.get("items") or [])
         if value is None or not _is_node_key(value, ctx):
             return []
+        identity = str(scalar_of(value))
+        if identity in self._seen:
+            return []
+        self._seen.add(identity)
         return [
             algorithm_event(
                 "visit",
@@ -382,7 +398,50 @@ def _is_node_key(value: Any, ctx: LiftContext) -> bool:
     return False
 
 
+class NodeValueLifter:
+    """A value a program keeps *per graph node*.
+
+    Shortest-path code holds `dist[v]`, topological sort holds `indegree[v]`,
+    cycle detection holds `state[v]`.  All three are a dict written at a key
+    that is also a node of a graph on the heap -- and all three are the single
+    most useful number to print next to that node while the algorithm runs.
+
+    Structural test only: the written key must be a key of some adjacency-shaped
+    dict.  It does not know what the value means, and does not need to.
+    """
+
+    id = "nodevalue"
+
+    def reset(self) -> None:
+        return None
+
+    def feed(self, ev: Event, ctx: LiftContext) -> list[Event]:
+        if ev.type is not EventType.SUBSCRIPT_WRITTEN:
+            return []
+        index = ev.payload.get("index")
+        if not isinstance(index, (str, int)) or isinstance(index, bool):
+            return []
+        key = {"k": "str", "v": index} if isinstance(index, str) else {"k": "int", "v": index}
+        if not _is_node_key(key, ctx):
+            return []
+        ref = ev.payload.get("container_ref")
+        # The adjacency map itself is not a place to hang per-node values.
+        if ref and (ctx.heap.get(ref) or {}).get("t") in ("list", "tuple"):
+            return []
+        return [
+            algorithm_event(
+                "nodevalue",
+                {
+                    "node": key,
+                    "value": ev.payload.get("new"),
+                    "label": ctx.names.get(ref or "") or "",
+                },
+                ev, self.id, confidence=0.6, ref=ref,
+            )
+        ]
+
+
 DEFAULT_LIFTERS: list[type[Lifter]] = [
     SwapLifter, CompareLifter, PointerLifter, StackQueueLifter,
-    RelaxLifter, VisitLifter,
+    RelaxLifter, VisitLifter, NodeValueLifter,
 ]

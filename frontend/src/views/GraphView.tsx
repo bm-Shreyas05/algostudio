@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { forceLayout, type GraphEdge, type GraphNode } from "../lib/layout";
-import { scalarOf } from "../lib/format";
+import { preview, scalarOf } from "../lib/format";
 import { nodeAnnotations, type ViewProps } from "./types";
 
 const WIDTH = 520;
@@ -57,6 +57,27 @@ export function GraphView({ descriptor, allAnnotations, state }: ViewProps) {
       discovered: found,
     };
   }, [marks]);
+
+  /* ---- per-node values the program is maintaining ----------------------
+     dist[v], indegree[v], state[v] -- whatever the algorithm keeps keyed by
+     node. Printing it under the node is the difference between watching nodes
+     change colour and actually following a shortest-path computation. */
+  const nodeValues = useMemo(() => {
+    const out = new Map<string, { label: string; text: string }>();
+    for (const a of allAnnotations) {
+      if (a.kind !== "nodevalue") continue;
+      const id = nodeId(a.value?.node);
+      if (!id) continue;
+      const scalar = scalarOf(a.value?.value);
+      out.set(id, {
+        label: String(a.label ?? ""),
+        text: scalar === null || scalar === undefined
+          ? preview(a.value?.value, 8)
+          : formatValue(scalar),
+      });
+    }
+    return out;
+  }, [allAnnotations]);
 
   /* ---- variables pointing at nodes ------------------------------------- */
   const cursors = useMemo<Cursor[]>(() => {
@@ -195,6 +216,11 @@ export function GraphView({ descriptor, allAnnotations, state }: ViewProps) {
               {cursor && (
                 <text className="gv-cursor" textAnchor="middle" dy="-24">{cursor}</text>
               )}
+              {nodeValues.has(id) && (
+                <text className="gv-value" textAnchor="middle" dy="30">
+                  {nodeValues.get(id)!.label}={nodeValues.get(id)!.text}
+                </text>
+              )}
             </g>
           );
         })}
@@ -205,6 +231,7 @@ export function GraphView({ descriptor, allAnnotations, state }: ViewProps) {
         <span><i className="visited" /> visited <b>①②③</b> = order</span>
         <span><i className="frontier" /> discovered</span>
         <span><i className="trail" /> route taken</span>
+        {nodeValues.size > 0 && <span className="muted">values under nodes are live</span>}
         {cursors.length > 0 && (
           <span className="muted">
             labels above nodes are variables pointing at them
@@ -213,6 +240,17 @@ export function GraphView({ descriptor, allAnnotations, state }: ViewProps) {
       </div>
     </div>
   );
+}
+
+/** Infinity is the common case for an unreached node; print the symbol. */
+function formatValue(scalar: number | string | boolean): string {
+  if (typeof scalar === "number") {
+    if (scalar === Infinity) return "∞";
+    if (scalar === -Infinity) return "-∞";
+    if (Number.isNaN(scalar)) return "NaN";
+    return Number.isInteger(scalar) ? String(scalar) : scalar.toFixed(2);
+  }
+  return String(scalar);
 }
 
 function nodeId(value: unknown): string | null {

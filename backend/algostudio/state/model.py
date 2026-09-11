@@ -31,19 +31,28 @@ UNINFORMATIVE_NAMES = frozenset({"self", "cls", "_"})
 #: How long an annotation stays visible after the event that created it, by
 #: ``ALGORITHM_EVENT`` name.  Transient highlights decay; positional markers
 #: persist until superseded.
+#: TTLs are in *events*, but the default navigation step is a whole source
+#: line, which advances five to fifteen events.  The original values (3-4) meant
+#: a comparison or a push had almost always expired by the time the next line
+#: step landed, so the highlight was invisible in normal use.
 ANNOTATION_TTL: dict[str, int] = {
-    "compare": 3,
-    "highlight": 3,
-    "swap": 3,
-    "relax": 4,
-    "discover": 6,
-    "note": 8,
+    "compare": 14,
+    "highlight": 14,
+    "push": 14,
+    "pop": 14,
+    "enqueue": 14,
+    "dequeue": 14,
+    "swap": 14,
+    "relax": 18,
+    "discover": 26,
+    "note": 26,
     "pointer": INFINITE_TTL,
     "region": INFINITE_TTL,
     "mark": INFINITE_TTL,
     "visit": INFINITE_TTL,
     "pivot": INFINITE_TTL,
     "partition": INFINITE_TTL,
+    "nodevalue": INFINITE_TTL,
 }
 
 
@@ -123,6 +132,7 @@ SUBJECT_ARGS: dict[str, tuple[str, ...]] = {
     "relax": ("u", "v"),
     "enqueue": ("value",),
     "push": ("value",),
+    "nodevalue": ("node",),
 }
 
 

@@ -2,6 +2,7 @@ import type { ComponentType } from "react";
 import { ArrayView } from "./ArrayView";
 import { GraphView } from "./GraphView";
 import { HeapView, LinkedListView, QueueView, StackView } from "./QueueView";
+import { ScalarsView, StringView } from "./StringView";
 import { MatrixView, ObjectView, SetView, TableView, ValueView } from "./TableView";
 import { TreeView } from "./TreeView";
 import type { ViewProps } from "./types";
@@ -25,6 +26,8 @@ export const VIEW_REGISTRY: Record<string, ComponentType<ViewProps>> = {
   stack: StackView,
   heap: HeapView,
   object: ObjectView,
+  string: StringView,
+  scalars: ScalarsView,
   value: ValueView,
 };
 
@@ -35,5 +38,6 @@ export function resolveView(name: string): ComponentType<ViewProps> {
 export const VIEW_LABELS: Record<string, string> = {
   array: "Array", matrix: "Matrix", graph: "Graph", tree: "Tree",
   "linked-list": "Linked list", table: "Table", set: "Set", queue: "Queue",
-  stack: "Stack", heap: "Heap", object: "Object", value: "Raw",
+  stack: "Stack", heap: "Heap", object: "Object",
+  string: "String", scalars: "Values", value: "Raw",
 };

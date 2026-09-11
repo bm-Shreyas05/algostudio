@@ -56,7 +56,18 @@ class ViewResolver:
         hints: Iterable[dict[str, Any]] = (),
         pins: dict[str, str] | None = None,
         primary: int = DEFAULT_PRIMARY,
+        current: ExecutionState | None = None,
     ) -> list[ViewDescriptor]:
+        """Resolve the view plan.
+
+        ``state`` is the *final* state, because structural detection is sticky:
+        an empty ``visited = set()`` should render as a set from step 0 rather
+        than popping into existence when it happens to fill.
+
+        ``current`` is the state at the step being displayed, and is what the
+        synthetic views use -- a string only exists while the frame holding it
+        is alive, so those must come from now, not from the end.
+        """
         pins = pins or {}
         names = state.ref_names()
         hint_list = list(hints)
@@ -107,10 +118,76 @@ class ViewResolver:
                 )
             )
 
+        plans.extend(self._synthetic(current or state, names))
         plans.sort(key=lambda p: (p.score, p.name != "", p.ref), reverse=True)
         for i, plan in enumerate(plans):
             plan.primary = i < primary
         return plans
+
+    def _synthetic(self, state: ExecutionState, names: dict[str, str]) -> list[ViewDescriptor]:
+        """Views for things that are not heap objects.
+
+        Strings and numbers are encoded inline rather than on the heap, which is
+        right for the value model but left whole algorithms -- palindrome checks,
+        substring search, modular exponentiation -- with literally nothing drawn.
+        These carry their own record in ``props`` so a view can render them
+        without a heap entry.
+        """
+        frame = state.frames[-1]
+        out: list[ViewDescriptor] = []
+
+        for name, value in frame.locals.items():
+            if not isinstance(value, dict) or value.get("k") != "str":
+                continue
+            text = value.get("v") or ""
+            if len(text) < 2:
+                continue
+            out.append(ViewDescriptor(
+                ref=f"str:{frame.frame_id}:{name}",
+                view="string",
+                score=0.66 if len(text) <= 120 else 0.5,
+                reason=f"string of {value.get('len', len(text))} characters",
+                name=name,
+                kind="str",
+                props={
+                    "record": {
+                        "ref": f"str:{frame.frame_id}:{name}",
+                        "t": "str",
+                        "n": value.get("len", len(text)),
+                        "trunc": bool(value.get("trunc")),
+                        "items": [
+                            {"k": "str", "v": ch, "len": 1} for ch in text[:256]
+                        ],
+                    },
+                },
+            ))
+
+        numbers = {
+            name: value for name, value in frame.locals.items()
+            if isinstance(value, dict) and value.get("k") in ("int", "float")
+        }
+        # Only worth a card when there is nothing structural to look at --
+        # otherwise the variables panel already covers it.
+        if numbers and not out and not any(
+            isinstance(v, dict) and v.get("k") == "ref" for v in frame.locals.values()
+        ):
+            out.append(ViewDescriptor(
+                ref=f"scalars:{frame.frame_id}",
+                view="scalars",
+                score=0.45,
+                reason="this frame holds only numbers, so there is no structure to draw",
+                name=frame.name,
+                kind="scalars",
+                props={
+                    "record": {
+                        "ref": f"scalars:{frame.frame_id}",
+                        "t": "scalars",
+                        "n": len(numbers),
+                        "fields": numbers,
+                    },
+                },
+            ))
+        return out
 
     def _hint_bonus(self, hints: list[dict[str, Any]], view: str, name: str) -> float:
         total = 0.0

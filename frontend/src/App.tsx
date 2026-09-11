@@ -127,7 +127,9 @@ export default function App() {
     if (!bundle) return [];
     return bundle.views
       .map((v) => (pinned[v.ref] ? { ...v, view: pinned[v.ref] } : v))
-      .filter((v) => state.heap[v.ref])
+      // Synthetic plans (strings, scalar frames) are not heap objects; they
+      // bring their own record in props.
+      .filter((v) => state.heap[v.ref] || v.props?.record)
       .slice(0, 6);
   }, [bundle, pinned, state]);
 
@@ -234,7 +236,7 @@ export default function App() {
                 )}
               </div>
               <View
-                object={state.heap[plan.ref]}
+                object={state.heap[plan.ref] ?? (plan.props.record as any)}
                 heap={state.heap}
                 annotations={annotationsFor(annotations, plan.ref)}
                 allAnnotations={annotations}

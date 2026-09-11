@@ -53,7 +53,15 @@ export function previewLive(
 
 export function scalarOf(value: EncodedValue | undefined): number | string | boolean | null {
   if (!value) return null;
-  if (value.k === "int" || value.k === "float") return value.v;
+  if (value.k === "int" || value.k === "float") {
+    // inf / nan travel in `special`; returning null for them made numeric
+    // comparisons in the views silently skip infinite distances.
+    if (value.v === null && (value as any).special) {
+      const parsed = Number((value as any).special);
+      return Number.isNaN(parsed) ? null : parsed;
+    }
+    return value.v;
+  }
   if (value.k === "str") return value.v;
   if (value.k === "bool") return value.v;
   return null;

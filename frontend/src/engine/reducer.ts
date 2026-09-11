@@ -22,9 +22,13 @@ const INFINITE_TTL = 1e9;
 const UNINFORMATIVE_NAMES = new Set(["self", "cls", "_"]);
 
 const ANNOTATION_TTL: Record<string, number> = {
-  compare: 3, highlight: 3, swap: 3, relax: 4, discover: 6, note: 8,
+  // In events, but the default step is a source line (5-15 events), so short
+  // TTLs expired before the user ever saw the highlight.
+  compare: 14, highlight: 14, swap: 14, relax: 18, discover: 26, note: 26,
+  push: 14, pop: 14, enqueue: 14, dequeue: 14,
   pointer: INFINITE_TTL, region: INFINITE_TTL, mark: INFINITE_TTL,
   visit: INFINITE_TTL, pivot: INFINITE_TTL, partition: INFINITE_TTL,
+  nodevalue: INFINITE_TTL,
 };
 
 /** Which argument identifies what an annotation is about. Mirrors
@@ -34,6 +38,7 @@ const SUBJECT_ARGS: Record<string, string[]> = {
   visit: ["node"], discover: ["node"], mark: ["target"], unmark: ["target"],
   highlight: ["index"], compare: ["i", "j"], swap: ["i", "j"],
   relax: ["u", "v"], enqueue: ["value"], push: ["value"],
+  nodevalue: ["node"],
 };
 
 function annotationSubject(kind: string, args: Record<string, any>): string {
@@ -52,6 +57,7 @@ function annotationSubject(kind: string, args: Record<string, any>): string {
 const ANNOTATION_KINDS = new Set([
   "pointer", "region", "mark", "unmark", "highlight", "visit", "discover",
   "compare", "swap", "relax", "pivot", "partition", "note",
+  "push", "pop", "enqueue", "dequeue", "nodevalue",
 ]);
 
 const COUNTER_FOR: Partial<Record<string, string>> = {
