@@ -1,0 +1,18 @@
+# TLS, HTTP/2 and a real certificate in four lines.  Caddy provisions the
+# certificate from Let's Encrypt on first request, so the only prerequisite is
+# that the DNS A record already points here.
+#
+#   caddy run --config deploy/Caddyfile
+#
+# Replace the hostname.  Everything below /api/v1 and /ws is the API; everything
+# else is the SPA -- but both come from the same upstream, because the API
+# process serves the SPA itself.
+algostudio.example.org {
+	encode zstd gzip
+
+	# Recordings are immutable once written, and the SPA is content-hashed.
+	@assets path /assets/*
+	header @assets Cache-Control "public, max-age=31536000, immutable"
+
+	reverse_proxy 127.0.0.1:8000
+}

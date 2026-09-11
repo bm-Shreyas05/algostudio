@@ -31,6 +31,13 @@ def _env_float(name: str, default: float) -> float:
         return default
 
 
+def _env_list(name: str, default: tuple[str, ...]) -> tuple[str, ...]:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    return tuple(part.strip() for part in raw.split(",") if part.strip())
+
+
 @dataclass(slots=True)
 class Settings:
     #: Where executions are stored.  Override with ALGOSTUDIO_DATA when the
@@ -45,6 +52,22 @@ class Settings:
     #: multi-user deployment -- see docs/06-sandbox.md).
     sandbox_mode: str = field(
         default_factory=lambda: os.environ.get("ALGOSTUDIO_SANDBOX", "subprocess")
+    )
+    #: May a visitor run source they typed themselves?  True locally, where the
+    #: only person who can reach the server is the person running it.  Setting
+    #: it to False turns the deployment into a curated gallery: the 49 bundled
+    #: plugins still run, ``POST /executions`` and ``POST /analyze`` do not.
+    #: That is the one honest way to publish a link without a container
+    #: boundary -- see docs/20-deployment.md.
+    allow_arbitrary_code: bool = field(
+        default_factory=lambda: _env_bool("ALGOSTUDIO_ALLOW_ARBITRARY_CODE", True)
+    )
+    #: Browser origins allowed to call the API.  The default is a wildcard
+    #: because in development the Vite dev server is a different origin; a
+    #: deployment that serves the built SPA from this same process needs no
+    #: cross-origin access at all and should set an explicit list (or "none").
+    cors_origins: tuple[str, ...] = field(
+        default_factory=lambda: _env_list("ALGOSTUDIO_CORS_ORIGINS", ("*",))
     )
     max_source_bytes: int = field(default_factory=lambda: _env_int("ALGOSTUDIO_MAX_SOURCE", 256 * 1024))
     max_inputs_bytes: int = field(default_factory=lambda: _env_int("ALGOSTUDIO_MAX_INPUTS", 4 * 1024 * 1024))
@@ -78,6 +101,37 @@ class Settings:
 
     def ensure_dirs(self) -> None:
         self.executions_dir.mkdir(parents=True, exist_ok=True)
+
+    def deployment_warnings(self) -> list[str]:
+        """Configuration that is fine locally and not fine on a public host.
+
+        Reported by ``GET /health`` and by ``tools/preflight.py`` rather than
+        enforced, because "fine locally" is the common case and refusing to
+        start would make the development default useless.  The one combination
+        that genuinely must not ship is the first: it executes source typed by
+        a stranger in a process that shares the host's kernel, filesystem and
+        network with the API.
+        """
+        warnings: list[str] = []
+        if self.allow_arbitrary_code and self.sandbox_mode != "docker":
+            warnings.append(
+                "arbitrary code is enabled with ALGOSTUDIO_SANDBOX=subprocess: "
+                "the in-process restrictions are defense in depth, not a "
+                "boundary (docs/06-sandbox.md). Set ALGOSTUDIO_SANDBOX=docker "
+                "or ALGOSTUDIO_ALLOW_ARBITRARY_CODE=0 before exposing this."
+            )
+        if "*" in self.cors_origins:
+            warnings.append(
+                "CORS allows every origin; set ALGOSTUDIO_CORS_ORIGINS to the "
+                "site's own origin, or to 'none' when the API and the SPA are "
+                "served from the same process."
+            )
+        if self.retention_days <= 0:
+            warnings.append(
+                "ALGOSTUDIO_RETENTION_DAYS <= 0: recordings are kept forever "
+                "and the data directory grows without bound."
+            )
+        return warnings
 
 
 SETTINGS = Settings()

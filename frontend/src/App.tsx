@@ -47,6 +47,13 @@ export default function App() {
 
   const { bundle, state, timeline } = exec;
 
+  /* A deployment can be published with ALGOSTUDIO_ALLOW_ARBITRARY_CODE=0, which
+     serves the bundled catalogue and refuses source typed by a visitor -- the
+     honest posture for a public link with no container sandbox under it
+     (docs/20-deployment.md). Read it once from /health and disable the editor,
+     rather than letting the user type a program and collect a 403. */
+  const curated = health?.allow_arbitrary_code === false;
+
   /* ---- which binding this step changed ---------------------------------
      Read straight off the current event. The previous version rebuilt the whole
      prior state (checkpoint clone + replay) on every render just to diff two
@@ -160,7 +167,7 @@ export default function App() {
       />
       <SourceView
         source={source}
-        editable={editing}
+        editable={editing && !curated}
         onChange={setSource}
         state={state}
         lineHits={bundle?.analytics.line_hits ?? {}}
@@ -198,10 +205,19 @@ export default function App() {
         {!bundle && (
           <div className="canvas-empty">
             <h3>Nothing recorded yet</h3>
-            <p>
-              Press <strong>▶ Run</strong> to execute the code on the left, or pick
-              an algorithm from the menu above. Playback starts automatically.
-            </p>
+            {curated ? (
+              <p>
+                Pick an algorithm from the menu above — playback starts
+                automatically. This deployment runs the bundled catalogue only;
+                the editor is disabled because there is no container sandbox
+                behind it.
+              </p>
+            ) : (
+              <p>
+                Press <strong>▶ Run</strong> to execute the code on the left, or pick
+                an algorithm from the menu above. Playback starts automatically.
+              </p>
+            )}
             <ul>
               <li>Views are chosen from the shape of the data at runtime — an
                   adjacency map becomes a graph, a list of numbers becomes an array.</li>
@@ -366,12 +382,19 @@ export default function App() {
           <option value="verbose">verbose</option>
         </select>
 
-        <button className="primary" onClick={doRun} disabled={exec.busy}>
+        <button
+          className="primary"
+          onClick={doRun}
+          disabled={exec.busy || curated}
+          title={curated
+            ? "This deployment runs the bundled catalogue only — pick an algorithm"
+            : "Execute the source on the left"}
+        >
           {exec.busy ? "Running…" : "▶ Run"}
         </button>
         <button
           onClick={() => setEditing((v) => !v)}
-          disabled={!bundle}
+          disabled={!bundle || curated}
           title={editing ? "Show the recorded trace" : "Go back to editing the source"}
         >
           {editing ? "View trace" : "Edit code"}
@@ -392,7 +415,11 @@ export default function App() {
               {bundle.summary.lifters && <span title="semantic lifting is on">lifting on</span>}
             </>
           )}
-          {health && <span title={`sandbox: ${health.sandbox_mode}`}>{health.sandbox_mode}</span>}
+          {health && (
+            <span title={`sandbox: ${health.sandbox_mode}`}>
+              {curated ? `${health.sandbox_mode} · catalogue only` : health.sandbox_mode}
+            </span>
+          )}
         </div>
       </header>
 

@@ -1,0 +1,11 @@
+# Nightly retention sweep.  The API also sweeps at startup, but a server that
+# never restarts would otherwise accumulate recordings indefinitely.
+[Unit]
+Description=AlgoStudio retention sweep
+
+[Timer]
+OnCalendar=daily
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,40 @@
+# systemd unit for the no-Docker deployment: uvicorn directly on the host,
+# serving the SPA it already contains.
+#
+# This is only safe with ALGOSTUDIO_ALLOW_ARBITRARY_CODE=0.  With arbitrary
+# code enabled and no container boundary, a visitor's program runs as this
+# user, on this filesystem -- the in-process policy is defense in depth, not a
+# boundary (docs/06-sandbox.md).
+#
+#   sudo cp deploy/algostudio.service /etc/systemd/system/
+#   sudo systemctl enable --now algostudio
+[Unit]
+Description=AlgoStudio
+After=network.target
+
+[Service]
+Type=exec
+User=algostudio
+Group=algostudio
+WorkingDirectory=/srv/algostudio
+EnvironmentFile=/srv/algostudio/.env
+ExecStart=/srv/algostudio/.venv/bin/python -m uvicorn algostudio.api.app:app \
+          --host 127.0.0.1 --port 8000 --app-dir /srv/algostudio/backend
+Restart=on-failure
+RestartSec=5
+
+# Host hardening.  None of this substitutes for the container sandbox; it
+# limits the blast radius of the API process itself.
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/srv/algostudio/var
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+
+[Install]
+WantedBy=multi-user.target

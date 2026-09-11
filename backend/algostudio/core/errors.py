@@ -99,6 +99,17 @@ class SandboxUnavailableError(AlgoStudioError):
     http_status = 503
 
 
+class ArbitraryCodeDisabledError(AlgoStudioError):
+    """This deployment runs the curated catalogue only.
+
+    Not a failure of the request: a deliberate posture for a public link that
+    has no container boundary under it (docs/20-deployment.md).
+    """
+
+    code = "arbitrary-code-disabled"
+    http_status = 403
+
+
 class ExecutionNotFoundError(AlgoStudioError):
     code = "execution-not-found"
     http_status = 404

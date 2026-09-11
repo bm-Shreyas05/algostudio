@@ -1,17 +1,30 @@
-# Development stack. The runtime image is built separately and is *not* a
-# service: DockerSandbox spawns a throwaway container per execution with
-# --network none, a read-only rootfs and dropped capabilities.
+# Development stack: the API in a container, the Vite dev server beside it.
+#
+# The runtime image is built separately and is deliberately *not* a service:
+# DockerSandbox spawns a throwaway container per execution with --network none,
+# a read-only rootfs and dropped capabilities.  Build it first:
+#
+#   make runtime-image
+#   docker compose up
+#
+# For the deployable single-container stack, see docker-compose.prod.yml.
 services:
   api:
     build:
-      context: ./backend
-      dockerfile: Dockerfile.api
+      context: .
+      dockerfile: backend/Dockerfile.api
+      target: api-base          # no SPA in the image; the web service serves it
     environment:
       ALGOSTUDIO_SANDBOX: docker
       ALGOSTUDIO_DATA: /data
+      ALGOSTUDIO_CORS_ORIGINS: "http://localhost:5173"
     volumes:
+      - ./backend:/app/backend                      # live reload of the backend
       - ./var:/data
       - /var/run/docker.sock:/var/run/docker.sock   # to spawn sandbox containers
+    command: >
+      python -m uvicorn algostudio.api.app:app
+      --host 0.0.0.0 --port 8000 --reload --reload-dir /app/backend
     ports:
       - "8000:8000"
 
@@ -19,6 +32,8 @@ services:
     image: node:20-slim
     working_dir: /app
     command: sh -c "npm install && npm run dev -- --host"
+    environment:
+      VITE_API_TARGET: "http://api:8000"    # the API is a sibling container
     volumes:
       - ./frontend:/app
     ports:

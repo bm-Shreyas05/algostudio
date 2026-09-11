@@ -10,8 +10,9 @@ from __future__ import annotations
 import asyncio
 import time
 from collections import defaultdict, deque
+from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, AsyncIterator
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -21,7 +22,7 @@ from fastapi.staticfiles import StaticFiles
 from ..ai import modes as ai_modes
 from ..analysis import static as static_analysis
 from ..config import SETTINGS
-from ..core.errors import AlgoStudioError
+from ..core.errors import AlgoStudioError, ArbitraryCodeDisabledError
 from ..inputs import generators
 from ..languages.registry import available as available_languages, get as get_frontend
 from ..plugins.registry import REGISTRY as PLUGINS
@@ -36,6 +37,21 @@ from .schemas import (
 API = "/api/v1"
 
 
+@asynccontextmanager
+async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
+    for warning in SETTINGS.deployment_warnings():
+        print(f"[algostudio] WARNING: {warning}", flush=True)
+    # Recordings are regenerable, so expiry is a sweep at boot rather than a
+    # scheduled job: a long-lived server should also run tools/gc.py from cron
+    # (deploy/algostudio-gc.timer), but a restart must never leave last
+    # month's runs on disk.
+    removed = app.state.executions.purge_expired()
+    if removed:
+        print(f"[algostudio] retention: removed {removed} expired execution(s)",
+              flush=True)
+    yield
+
+
 def create_app() -> FastAPI:
     app = FastAPI(
         title="AlgoStudio",
@@ -43,14 +59,20 @@ def create_app() -> FastAPI:
         description=(
             "Universal event-driven program execution and visualization platform."
         ),
+        lifespan=_lifespan,
     )
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=["*"],
-        allow_credentials=False,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
+    # "none" means the SPA is served from this same process, so there is no
+    # cross-origin caller to allow.  The development default is a wildcard
+    # because the Vite dev server is a different origin.
+    origins = [o for o in SETTINGS.cors_origins if o.lower() != "none"]
+    if origins:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=origins,
+            allow_credentials=False,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
 
     executions = ExecutionService()
     ai = AIService(executions)
@@ -75,6 +97,7 @@ def create_app() -> FastAPI:
         return {
             "status": "ok",
             "sandbox_mode": SETTINGS.sandbox_mode,
+            "allow_arbitrary_code": SETTINGS.allow_arbitrary_code,
             "languages": available_languages(),
             "ai": ai.provider_status(),
             "limits": {
@@ -82,6 +105,7 @@ def create_app() -> FastAPI:
                 "max_seconds": SETTINGS.max_seconds,
                 "max_source_bytes": SETTINGS.max_source_bytes,
             },
+            "warnings": SETTINGS.deployment_warnings(),
         }
 
     @app.get(f"{API}/ai/modes")
@@ -91,6 +115,7 @@ def create_app() -> FastAPI:
     # ---------------------------------------------------------- executions
     @app.post(f"{API}/executions", status_code=201)
     def create_execution(body: CreateExecution, request: Request) -> dict[str, Any]:
+        _require_arbitrary_code()
         limiter.check(request, "run", SETTINGS.rate_limit_runs_per_minute)
         result = executions.run(
             RunRequest(
@@ -175,6 +200,9 @@ def create_app() -> FastAPI:
     # ------------------------------------------------------------ analysis
     @app.post(f"{API}/analyze")
     def analyze(body: AnalyzeRequest) -> dict[str, Any]:
+        # Analysis does not execute anything, but it does instrument source a
+        # visitor supplied, and in curated mode the editor is hidden anyway.
+        _require_arbitrary_code()
         result = get_frontend(body.language).analyze(body.source)
         return {
             "language": body.language,
@@ -331,6 +359,15 @@ def create_app() -> FastAPI:
 
     _mount_frontend(app)
     return app
+
+
+def _require_arbitrary_code() -> None:
+    if not SETTINGS.allow_arbitrary_code:
+        raise ArbitraryCodeDisabledError(
+            "this deployment runs the bundled algorithm catalogue only; "
+            "arbitrary source execution is disabled",
+            catalogue=f"{API}/algorithms",
+        )
 
 
 class RateLimiter:

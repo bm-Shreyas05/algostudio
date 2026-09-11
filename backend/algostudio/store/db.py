@@ -170,6 +170,16 @@ class Database:
             ).fetchone()
         return dict(row) if row else None
 
+    def executions_before(self, cutoff: float) -> list[dict[str, Any]]:
+        """Rows old enough to expire, newest first, id and directory only."""
+        with self.connect() as conn:
+            rows = conn.execute(
+                "SELECT id, storage_dir FROM execution WHERE created_at < ? "
+                "ORDER BY created_at",
+                (cutoff,),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
     def delete_execution(self, execution_id: str) -> None:
         with self.connect() as conn:
             conn.execute("DELETE FROM execution WHERE id = ?", (execution_id,))

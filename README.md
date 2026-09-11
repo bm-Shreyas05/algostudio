@@ -75,6 +75,25 @@ important one: if instrumentation changes what a program does, every event,
 state, view and explanation built on top is describing something the user did
 not write — and the failure is invisible.
 
+A third harness checks the *pictures* rather than the exit codes — it runs all
+49 plugins, samples the view plan and live annotations through each run, and
+flags any algorithm whose visualization is empty, anonymous or unmarked:
+
+```bash
+cd backend && python tools/audit_views.py     # 48/49 clean
+```
+
+### Deploy it
+
+```bash
+make build && make preflight     # build the SPA; refuse to ship an unsafe config
+make up                          # API + SPA in one container, Docker sandbox
+```
+
+[`docs/20-deployment.md`](docs/20-deployment.md) covers both postures — the
+curated public link and the full VPS deployment — and is explicit about which
+one you are allowed to give a stranger.
+
 ---
 
 ## What is actually supported
@@ -105,7 +124,7 @@ contract.
 ## Repository layout
 
 ```
-docs/          20-part design set (problem statement through evaluation protocol)
+docs/          21-part design set (problem statement through deployment)
 backend/
   algostudio/
     core/        event model, value encoding, IR      — stdlib only
@@ -120,8 +139,9 @@ backend/
     algorithms/  DATA ONLY — adding one touches nothing else
     ai/          grounded context, template explainer, claim verifier
     api/         REST + WebSocket
-  tools/       developer harnesses and the invariant checkers
-  tests/       fixture corpus
+  tools/       invariant checkers, the view audit, preflight, retention sweep
+  tests/       fixture corpus + the deployment-surface suite
+deploy/        Caddyfile, systemd unit, retention timer
 frontend/
   src/
     engine/    TypeScript mirror of the reducer (navigation needs no network)
@@ -140,6 +160,13 @@ honestly: the in-process restrictions (import allowlist, builtins denylist) are
 in-process. The boundary is the OS process and, in production, the container.
 `ALGOSTUDIO_SANDBOX=docker` is required for any multi-user deployment.
 
+Because that is a rule and not a suggestion, it is enforced rather than
+documented: `make preflight` exits non-zero if arbitrary code is enabled
+without the container sandbox, and `GET /api/v1/health` reports the same
+warnings. The alternative posture is `ALGOSTUDIO_ALLOW_ARBITRARY_CODE=0`, which
+serves the 49 bundled algorithms and refuses visitor source with a 403 — the
+honest way to publish a public link with no Docker daemon underneath.
+
 Infinite loops are stopped by an in-process budget guard rather than an OS
 timeout, so `while True:` yields the first 200,000 events of the loop as a
 navigable trace instead of a hang — which is the material you need to see *why*
@@ -149,11 +176,15 @@ it never terminates.
 
 ## Status
 
-Design documents and the MVP (backend + frontend) are complete and working.
-Verification currently runs through the two harnesses above rather than the
-pytest suite described in `docs/14-testing-strategy.md`; the formal `tests/`
-package, Docker-mode verification, and the V2 items (graph editor, live
-breakpoints, synchronized algorithm comparison) are not built yet.
+Design documents and the MVP (backend + frontend) are complete and working, and
+the deployment path in `docs/20-deployment.md` is implemented — both modes, with
+the unsafe combination refused by `make preflight`.
+
+Verification runs mainly through the three harnesses above rather than the full
+pytest suite described in `docs/14-testing-strategy.md`. `tests/` currently holds
+the fixture corpus plus `test_deployment.py`; the rest of that suite, Docker-mode
+verification on a real daemon, and the V2 items (graph editor, live breakpoints,
+synchronized algorithm comparison) are not built yet.
 
 No experimental results are reported anywhere in `docs/`. The evaluation
 protocols in `docs/15-research-and-evaluation.md` have empty result columns by

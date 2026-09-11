@@ -1,0 +1,58 @@
+# The API image.
+#
+# It is NOT the sandbox. The sandbox is Dockerfile.runtime, and this image
+# spawns it: with ALGOSTUDIO_SANDBOX=docker it needs the host Docker socket
+# mounted (see docker-compose.prod.yml). Without that socket, run it with
+# ALGOSTUDIO_ALLOW_ARBITRARY_CODE=0 so only the bundled catalogue executes.
+#
+# Two useful targets:
+#   api-base  backend only, for development next to a Vite dev server
+#   api       (default) backend + the built SPA served from the same origin
+#             by api/app.py::_mount_frontend -- one container, one port
+#
+# Build from the repository root:
+#   docker build -f backend/Dockerfile.api -t algostudio-api:latest .
+
+# ---- stage 1: build the SPA ------------------------------------------------
+FROM node:20-slim AS web
+WORKDIR /web
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+COPY frontend/ ./
+RUN npm run build
+
+# ---- stage 2: the backend --------------------------------------------------
+FROM python:3.12-slim AS api-base
+
+# docker-cli only, never the daemon: DockerSandbox shells out to `docker run`
+# against the host's socket.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends docker.io ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY backend/ /app/backend/
+# Editable, so the plugin directories keep their explain.md and source.py where
+# the registry expects them, while dependencies still come from pyproject.toml
+# rather than being restated here and drifting.
+RUN pip install --no-cache-dir -e "./backend[ai]"
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    ALGOSTUDIO_DATA=/data
+
+RUN mkdir -p /data
+VOLUME ["/data"]
+EXPOSE 8000
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+  CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health',timeout=4).status==200 else 1)"
+
+CMD ["python", "-m", "uvicorn", "algostudio.api.app:app", \
+     "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
+
+# ---- stage 3: backend + SPA ------------------------------------------------
+FROM api-base AS api
+# _mount_frontend resolves <repo>/frontend/dist relative to the package, so the
+# built SPA has to land in exactly this path.
+COPY --from=web /web/dist /app/frontend/dist

@@ -1,0 +1,40 @@
+# The deployable stack: one container, one port, the SPA served from the same
+# origin as the API.  Copy .env.example to .env first and read it -- the two
+# settings that matter are ALGOSTUDIO_SANDBOX and ALGOSTUDIO_ALLOW_ARBITRARY_CODE.
+#
+#   cp .env.example .env
+#   docker build -f backend/Dockerfile.runtime -t algostudio-runtime:latest backend
+#   docker compose -f docker-compose.prod.yml up -d --build
+#
+# Put a TLS terminator in front of it (deploy/Caddyfile is 4 lines).
+services:
+  api:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile.api
+      target: api                  # includes the built SPA
+    image: algostudio-api:latest
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      ALGOSTUDIO_DATA: /data
+      # The SPA is same-origin here, so no browser ever needs a CORS grant.
+      ALGOSTUDIO_CORS_ORIGINS: "none"
+    volumes:
+      - algostudio-data:/data
+      # Only needed for ALGOSTUDIO_SANDBOX=docker.  Mounting the socket gives
+      # this container control of the host's Docker daemon, which is root
+      # equivalent -- it is the price of a real sandbox boundary on a single
+      # box, and the reason the curated mode below exists as an alternative.
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - "127.0.0.1:8000:8000"      # bound to loopback; the proxy publishes it
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health',timeout=4).status==200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  algostudio-data:

@@ -321,6 +321,29 @@ class ExecutionService:
         self.db.delete_execution(execution_id)
         _invalidate(execution_id)
 
+    def purge_expired(self, days: int | None = None) -> int:
+        """Delete recordings older than the retention window.
+
+        An execution is a directory of events plus a database row, and nothing
+        downstream depends on old ones: a stale share link 404s, which is the
+        documented behaviour.  Returns how many were removed so a caller can
+        log it.  ``days <= 0`` disables expiry and returns 0.
+        """
+        window = self.settings.retention_days if days is None else days
+        if window <= 0:
+            return 0
+        cutoff = time.time() - window * 86_400
+        removed = 0
+        for row in self.db.executions_before(cutoff):
+            try:
+                self.delete(row["id"])
+            except OSError:
+                # A directory that is locked (Windows, another process reading
+                # it) is retried on the next sweep; never abort the sweep.
+                continue
+            removed += 1
+        return removed
+
     # ==================================================================
     # internals
     # ==================================================================

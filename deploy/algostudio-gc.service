@@ -1,0 +1,9 @@
+[Unit]
+Description=AlgoStudio retention sweep
+
+[Service]
+Type=oneshot
+User=algostudio
+WorkingDirectory=/srv/algostudio
+EnvironmentFile=/srv/algostudio/.env
+ExecStart=/srv/algostudio/.venv/bin/python backend/tools/gc.py
