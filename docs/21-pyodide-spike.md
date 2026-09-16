@@ -110,6 +110,10 @@ rather than research. The remaining work is:
    in place of the HTTP calls;
 3. a mode switch so `/app` uses the browser engine for visitor code and the
    server for the bundled catalogue;
-4. progress and download UI for the ~10 MB Pyodide fetch, cached thereafter.
+4. progress and download UI for the Pyodide fetch, cached thereafter. Measured
+   on this spike: **5.2 MB over 7 requests** (2.6 MB `pyodide.asm.wasm`,
+   2.3 MB `python_stdlib.zip`, 221 KB `pyodide.asm.js`) — paid only by a
+   visitor who actually opens the editor, not by anyone reading the site or
+   running a bundled algorithm.
 
 None of it is speculative. All of it is work.
