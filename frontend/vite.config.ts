@@ -48,6 +48,71 @@ const PAGES: Page[] = [
 ];
 
 /**
+ * A consent gate for analytics that actually stores something.
+ *
+ * Emitted only when VITE_ANALYTICS_CONSENT=1, so the default build contains
+ * none of it. Deliberately a plain inline snippet rather than a component:
+ * the content pages ship no JavaScript, and pulling in a framework to ask one
+ * question would cost more than the thing being measured.
+ *
+ * The rules it has to obey to be worth anything: nothing loads before a yes,
+ * declining is one click and is remembered, and the choice can be changed
+ * afterwards. A banner whose only button is "Accept" is not consent.
+ */
+function consentSnippet(src: string, domain: string): string {
+  const attrs = domain ? ` s.setAttribute('data-domain',${JSON.stringify(domain)});` : "";
+  return `<style>
+.cc-bar{position:fixed;left:0;right:0;bottom:0;z-index:999;display:flex;gap:14px;
+align-items:center;flex-wrap:wrap;justify-content:center;padding:14px 18px;
+background:#12181f;border-top:1px solid #232c38;color:#c2ccd8;
+font:15px/1.5 Inter,"Segoe UI",system-ui,sans-serif}
+.cc-bar p{margin:0;max-width:46rem}
+.cc-bar a{color:#4c9aff}
+.cc-bar button{font:inherit;font-weight:600;padding:9px 18px;border-radius:7px;cursor:pointer;
+border:1px solid #5c6b80;background:#161d26;color:#dbe3ec}
+.cc-bar button.yes{background:#4c9aff;border-color:#4c9aff;color:#06121f}
+.cc-bar button:focus-visible{outline:2px solid #4c9aff;outline-offset:2px}
+.cc-re{position:fixed;left:12px;bottom:10px;z-index:998;font:12px system-ui,sans-serif;
+color:#9aa7b4;background:#12181f;border:1px solid #232c38;border-radius:6px;
+padding:4px 9px;cursor:pointer}
+</style>
+<script>(function(){
+var KEY='algostudio.consent';
+function load(){var s=document.createElement('script');s.defer=true;s.src=${JSON.stringify(src)};${attrs}
+document.head.appendChild(s);}
+function get(){try{return localStorage.getItem(KEY);}catch(e){return null;}}
+function set(v){try{localStorage.setItem(KEY,v);}catch(e){}}
+function reopen(){
+  var b=document.createElement('button');b.className='cc-re';b.type='button';
+  b.textContent='Cookie settings';
+  b.onclick=function(){b.remove();ask();};
+  document.body.appendChild(b);
+}
+function ask(){
+  var bar=document.createElement('div');
+  bar.className='cc-bar';bar.setAttribute('role','dialog');
+  bar.setAttribute('aria-label','Cookie consent');
+  var p=document.createElement('p');
+  p.innerHTML='We would like to set an analytics cookie to count visits. '+
+    'It is not required for the site to work, and declining changes nothing. '+
+    '<a href="/privacy">Privacy policy</a>.';
+  var yes=document.createElement('button');yes.type='button';yes.className='yes';
+  yes.textContent='Accept';
+  var no=document.createElement('button');no.type='button';no.textContent='Decline';
+  yes.onclick=function(){set('granted');bar.remove();load();reopen();};
+  no.onclick=function(){set('denied');bar.remove();reopen();};
+  bar.appendChild(p);bar.appendChild(no);bar.appendChild(yes);
+  document.body.appendChild(bar);
+  yes.focus();
+}
+function start(){var c=get();if(c==='granted'){load();reopen();}
+else if(c==='denied'){reopen();}else{ask();}}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start);
+else start();
+})();</script>`;
+}
+
+/**
  * Build-time SEO and performance pass.
  *
  * Does four things no amount of hand-editing keeps correct for long:
@@ -59,14 +124,30 @@ function sitePlugin(): Plugin {
   const analyticsSrc = process.env.VITE_ANALYTICS_SRC ?? "";
   const analyticsDomain = process.env.VITE_ANALYTICS_DOMAIN ?? "";
 
-  // Plausible- and Umami-compatible: one deferred script, no cookies, no
-  // personal data, therefore nothing to ask consent for. If this is empty --
-  // the default -- the page ships with no third-party request at all.
-  const analyticsTag = analyticsSrc
+  // Set this only for a provider that stores something on the visitor's
+  // device -- Google Analytics, say. It changes the law that applies: a
+  // cookieless aggregate counter needs no opt-in, a cookie does.
+  const needsConsent = process.env.VITE_ANALYTICS_CONSENT === "1";
+
+  const scriptTag = analyticsSrc
     ? `<script defer src="${analyticsSrc}"${
         analyticsDomain ? ` data-domain="${analyticsDomain}"` : ""
       }></script>`
-    : "<!-- analytics: none configured (VITE_ANALYTICS_SRC unset) -->";
+    : "";
+
+  // Plausible- and Umami-compatible: one deferred script, no cookies, no
+  // personal data, therefore nothing to ask consent for. If this is empty --
+  // the default -- the page ships with no third-party request at all.
+  //
+  // Where consent IS required the script is not emitted at all; the snippet
+  // below loads it only after an explicit yes. Nothing is injected in the
+  // default configuration, so the content pages keep their zero-JavaScript
+  // property rather than carrying a banner they will never show.
+  const analyticsTag = !analyticsSrc
+    ? "<!-- analytics: none configured (VITE_ANALYTICS_SRC unset) -->"
+    : needsConsent
+      ? consentSnippet(analyticsSrc, analyticsDomain)
+      : scriptTag;
 
   let outDir = "dist";
 
