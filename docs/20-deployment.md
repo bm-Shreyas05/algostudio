@@ -255,3 +255,43 @@ same state they draw; `prefers-reduced-motion` honoured.
 phone has no drag-a-divider gesture. Below 900 px it becomes one panel and a
 tab bar — same components, same state, different container — rather than a
 desktop layout shrunk until it merely fits.
+
+
+---
+
+## J. The bug the container build found
+
+Building the image locally before deploying was worth the whole exercise. The
+site was correct in every measurable way -- every route, header, redirect,
+canonical, schema block and 404 behaved -- and **no algorithm would run**.
+
+`sandbox/limits.py` set `RLIMIT_FSIZE` to 0 in the `preexec_fn` installed on
+the sandbox child. The intent reads plausibly: user code should not be able to
+write files. But the recorder writes `events.jsonl` and `result.json` from
+inside that same child, so a zero-byte ceiling means the run produces nothing.
+The parent then finds no `result.json`, falls back to `internal_error`, and
+reports zero events with `error: null` -- no traceback, no diagnostics, because
+the child was killed writing its own error report.
+
+**Why every test passed anyway:** `preexec_fn` is POSIX-only. On Windows there
+is no `resource` module and no fork, so `preexec()` returns `None` and had
+*never executed*. Every harness -- 46 semantics fixtures, 51 time-travel
+programs, the 49-plugin audit -- passed on Windows while the deployed
+configuration was completely broken.
+
+The fix sizes the limit to what the file actually holds: the event budget,
+floored at 64 MB and capped at 512 MB, so it remains a real bound on disk use.
+
+`tests/test_sandbox_limits.py` covers it, and is marked POSIX-only so it
+*runs* rather than silently skipping into a green tick. Verified by
+reintroducing the bug inside the container: three of its four tests fail, and
+pass again once reverted.
+
+**The transferable lesson:** anything behind a `sys.platform` guard needs a
+test that runs on the platform it guards, or it is not tested — it is merely
+skipped. And an image is not verified until it has been built and run.
+
+In-container verification now covers: 49/49 plugins execute (33,635 events),
+state/views/analytics resolve, reverse stepping and exact seek hold, and all
+three engine harnesses reproduce their Windows results (46 matched, 51/51,
+48/49).

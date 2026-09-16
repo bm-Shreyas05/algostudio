@@ -54,6 +54,15 @@ def preexec(policy: Any) -> Callable[[], None] | None:
     cpu = int(max(1, policy.max_cpu_seconds))
     mem = int(policy.max_memory_mb) * 1024 * 1024
 
+    # RLIMIT_FSIZE was 0 here, which read as "user code cannot write files".
+    # It is not: the recorder writes events.jsonl and result.json from inside
+    # this same child, so a zero byte ceiling means the run produces nothing
+    # and the parent sees `internal_error` with no diagnostics. The event log
+    # is what the limit actually has to accommodate, so size it to the event
+    # budget -- generous per event, floored so a tiny budget still works, and
+    # capped so a large one cannot fill the disk.
+    fsize = min(512 * 1024 * 1024, max(64 * 1024 * 1024, int(policy.max_events) * 512))
+
     def _apply() -> None:  # pragma: no cover - runs in the forked child
         try:
             os.setsid()
@@ -62,7 +71,7 @@ def preexec(policy: Any) -> Callable[[], None] | None:
         for res, soft, hard in (
             (resource.RLIMIT_CPU, cpu, cpu + 1),
             (resource.RLIMIT_AS, mem, mem),
-            (resource.RLIMIT_FSIZE, 0, 0),
+            (resource.RLIMIT_FSIZE, fsize, fsize),
             (resource.RLIMIT_NOFILE, 64, 64),
             (resource.RLIMIT_CORE, 0, 0),
         ):
