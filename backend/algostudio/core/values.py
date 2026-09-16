@@ -19,6 +19,7 @@ mistake a clipped value for a complete one.
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 # Types encoded inline rather than as heap references.
@@ -80,9 +81,19 @@ def enc_ref(ref: str, tag: str, n: int, trunc: bool = False) -> dict[str, Any]:
     return d
 
 
+#: ``repr()`` of a function, module or plain object embeds its address:
+#: ``<function f at 0x7f3c8a1b2d40>``.  That address is meaningless to a reader,
+#: it leaks the process layout, and -- because it changes on every run -- it
+#: made the event stream irreproducible: two runs of the same program, and a
+#: cached recording versus a fresh one, differed in exactly these bytes.  The
+#: docstring at the top of this module has always described the intended form
+#: as ``<function f>``; this is what makes that true.
+_ADDRESS = re.compile(r"\s+at\s+0x[0-9a-fA-F]+")
+
+
 def enc_opaque(obj: Any) -> dict[str, Any]:
     try:
-        r = repr(obj)
+        r = _ADDRESS.sub("", repr(obj))
     except Exception:  # pragma: no cover - hostile __repr__
         r = "<unrepresentable>"
     return {"k": "opaque", "t": type(obj).__name__, "repr": r[:120]}

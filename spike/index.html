@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>AlgoStudio × Pyodide spike</title>
+<style>
+  body { background:#0d1117; color:#dbe3ec; font:13px/1.55 ui-monospace,Consolas,monospace;
+         margin:0; padding:22px; }
+  h1 { font-size:17px; margin:0 0 4px; }
+  .sub { color:#7d8996; margin-bottom:16px; }
+  #log { white-space:pre-wrap; }
+  .ok{color:#4aa06b}.bad{color:#d96a6a}.warn{color:#d9a441}.dim{color:#7d8996}
+</style>
+</head>
+<body>
+<h1>AlgoStudio engine inside Pyodide</h1>
+<div class="sub">running the whole fixture corpus in the browser and comparing
+every event against native CPython</div>
+<div id="log">booting…</div>
+
+<script src="https://cdn.jsdelivr.net/pyodide/v0.28.3/full/pyodide.js"></script>
+<script>
+const log = document.getElementById("log");
+const out = [];
+const say = (m, c) => { out.push(c ? `<span class="${c}">${m}</span>` : m);
+                        log.innerHTML = out.join("\n"); };
+window.SPIKE = { done:false, ok:false };
+
+async function main() {
+  const t0 = performance.now();
+  try {
+    say("loading pyodide…", "dim");
+    // Set iteration order is part of the event stream, so the browser has to
+    // run under the same fixed hash seed the sandbox pins in clean_env().
+    const pyodide = await loadPyodide({ env: { PYTHONHASHSEED: "0" } });
+    const loadMs = Math.round(performance.now() - t0);
+    say(`pyodide ${pyodide.version} (CPython ${pyodide.runPython(
+        "import sys; '.'.join(map(str, sys.version_info[:2]))")}) ` +
+        `ready in ${(loadMs/1000).toFixed(1)}s`, "ok");
+
+    const zip = await (await fetch("algostudio.zip")).arrayBuffer();
+    pyodide.unpackArchive(zip, "zip");
+    say(`engine unpacked: ${(zip.byteLength/1024).toFixed(0)} KB`, "ok");
+
+    const fixtures = await (await fetch("fixtures.json")).text();
+    pyodide.FS.writeFile("/fixtures.json", fixtures);
+    say(`ground truth loaded: ${(fixtures.length/1024).toFixed(0)} KB\n`, "ok");
+
+    // Everything below runs in Python so the hash is computed by the same
+    // algorithm as the native side, not a JavaScript re-implementation.
+    const report = pyodide.runPython(String.raw`
+import hashlib, json, os, sys, time
+from algostudio.runtime import child_main
+
+data = json.load(open("/fixtures.json"))
+BUDGET = data["budget"]
+
+VOLATILE = ("python", "duration_ms")
+
+def normalise(e):
+    e = {k: v for k, v in e.items() if k != "t"}
+    p = e.get("payload")
+    if isinstance(p, dict):
+        e["payload"] = {k: v for k, v in p.items() if k not in VOLATILE}
+    return e
+
+def digest(events):
+    h = hashlib.sha256()
+    for e in events:
+        h.update(json.dumps(normalise(e), sort_keys=True, separators=(",", ":")).encode())
+        h.update(b"\n")
+    return h.hexdigest()
+
+rows, matched, failed = [], 0, 0
+started = time.time()
+for i, case in enumerate(data["cases"]):
+    d = f"/jobs/{i}"
+    os.makedirs(d, exist_ok=True)
+    with open(f"{d}/job.json", "w") as fh:
+        json.dump({"language":"python","source":case["source"],"inputs":{},
+                   "granularity":"standard","entry":None,"stdin":"",
+                   "budget":BUDGET,"allowed_modules":None}, fh)
+    try:
+        child_main.main(["child_main.py", d])
+        events = [json.loads(l) for l in open(f"{d}/events.jsonl") if l.strip()]
+        result = json.load(open(f"{d}/result.json"))
+        sha, status, count = digest(events), result["status"], result["event_count"]
+        err = None
+    except BaseException as exc:
+        sha, status, count, err = "", f"HARNESS:{type(exc).__name__}", 0, str(exc)[:200]
+
+    same = (sha == case["sha256"] and status == case["status"]
+            and count == case["event_count"])
+    matched += same
+    failed += (not same)
+    rows.append({"name":case["name"], "same":same, "status":status,
+                 "expected_status":case["status"], "count":count,
+                 "expected_count":case["event_count"],
+                 "sha_match": sha == case["sha256"], "error":err})
+
+json.dumps({"rows":rows, "matched":matched, "failed":failed,
+            "elapsed_ms": int((time.time()-started)*1000)})
+`);
+    const r = JSON.parse(report);
+    window.SPIKE.report = r;
+
+    for (const row of r.rows) {
+      if (row.same) {
+        say(`  ok    ${row.name.padEnd(34)}${String(row.status).padEnd(17)}` +
+            `${String(row.count).padStart(6)} events`, "ok");
+      } else {
+        say(`  FAIL  ${row.name.padEnd(34)}${String(row.status).padEnd(17)}` +
+            `${String(row.count).padStart(6)} events  ` +
+            `(native: ${row.expected_status} ${row.expected_count}, ` +
+            `hash ${row.sha_match ? "match" : "DIFFERS"})` +
+            (row.error ? `  ${row.error}` : ""), "bad");
+      }
+    }
+    window.SPIKE.ok = r.failed === 0;
+    say(`\n${r.matched}/${r.rows.length} fixtures byte-identical to native CPython` +
+        ` · engine ran the corpus in ${(r.elapsed_ms/1000).toFixed(1)}s`,
+        r.failed === 0 ? "ok" : "bad");
+  } catch (err) {
+    say("\nSPIKE FAILED: " + (err?.message ?? String(err)), "bad");
+    window.SPIKE.error = String(err?.stack ?? err);
+  } finally {
+    window.SPIKE.done = true;
+    window.SPIKE.totalMs = Math.round(performance.now() - t0);
+    say(`[total ${(window.SPIKE.totalMs/1000).toFixed(1)}s]`, "dim");
+  }
+}
+main();
+</script>
+</body>
+</html>
