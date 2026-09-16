@@ -20,7 +20,11 @@ FROM node:20-slim AS web
 # specification, so the build has to be told where it will be served from.
 # A canonical pointing at the wrong origin is worse than none at all, which is
 # why this is an explicit argument with a default rather than a guess.
-ARG VITE_SITE_URL=https://algostudio.onrender.com
+# The live deployment. Render appended a suffix when the service was
+# created, and the name is part of the hostname -- so this is the actual
+# origin, not the one the service was named after. Override with
+# --build-arg VITE_SITE_URL=... for any other deployment.
+ARG VITE_SITE_URL=https://algostudio-wu5c.onrender.com
 # Cookieless analytics, off unless a source is supplied. Empty means the built
 # pages contain no third-party request at all.
 ARG VITE_ANALYTICS_SRC=""

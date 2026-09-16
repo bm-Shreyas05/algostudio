@@ -12,6 +12,13 @@
 # Render reads this file, builds the Dockerfile and publishes the service.
 
 services:
+  # NOTE: Render appends a suffix when the chosen name is taken, and the
+  # service name becomes the hostname. The live origin is
+  #   https://algostudio-wu5c.onrender.com
+  # which is what backend/Dockerfile.api bakes into canonical tags, Open
+  # Graph URLs and sitemap.xml. If this service is ever renamed or given a
+  # custom domain, rebuild with --build-arg VITE_SITE_URL=<new origin>;
+  # GET /api/v1/health warns when the served origin and the baked one disagree.
   - type: web
     name: algostudio
     runtime: docker

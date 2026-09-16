@@ -8,11 +8,14 @@ test, or the benchmark harness without starting a server.
 from __future__ import annotations
 
 import asyncio
+import re
 import time
 from collections import defaultdict, deque
 from contextlib import asynccontextmanager
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, AsyncIterator
+from urllib.parse import urlsplit
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -100,11 +103,14 @@ def create_app() -> FastAPI:
 
     # ---------------------------------------------------------------- meta
     @app.get(f"{API}/health")
-    def health() -> dict[str, Any]:
+    def health(request: Request) -> dict[str, Any]:
+        warnings = SETTINGS.deployment_warnings()
+        warnings += _canonical_warnings(request)
         return {
             "status": "ok",
             "sandbox_mode": SETTINGS.sandbox_mode,
             "allow_arbitrary_code": SETTINGS.allow_arbitrary_code,
+            "canonical_origin": _baked_origin(),
             "languages": available_languages(),
             "ai": ai.provider_status(),
             "limits": {
@@ -112,7 +118,7 @@ def create_app() -> FastAPI:
                 "max_seconds": SETTINGS.max_seconds,
                 "max_source_bytes": SETTINGS.max_source_bytes,
             },
-            "warnings": SETTINGS.deployment_warnings(),
+            "warnings": warnings,
         }
 
     @app.get(f"{API}/ai/modes")
@@ -426,6 +432,48 @@ ROOT_FILES = (
 IMMUTABLE = "public, max-age=31536000, immutable"
 REVALIDATE = "public, max-age=0, must-revalidate"
 ROOT_FILE_CACHE = "public, max-age=86400"
+
+
+@lru_cache(maxsize=1)
+def _baked_origin() -> str | None:
+    """The origin compiled into the built pages' canonical tags.
+
+    Absolute URLs have to be chosen at build time, which means a build can be
+    deployed somewhere other than the origin it was told about. That mistake
+    is completely silent -- the site renders perfectly while telling search
+    engines the real copy lives at an origin nobody owns -- so it is read back
+    out of the artefact and checked, rather than trusted.
+    """
+    index = Path(__file__).resolve().parents[3] / "frontend" / "dist" / "index.html"
+    try:
+        head = index.read_text(encoding="utf-8")[:8192]
+    except OSError:
+        return None
+    match = re.search(r'rel="canonical"\s+href="(https?://[^/"]+)', head)
+    return match.group(1) if match else None
+
+
+def _canonical_warnings(request: Request) -> list[str]:
+    """Flag a build whose canonical origin is not where it is being served."""
+    baked = _baked_origin()
+    if not baked:
+        return []
+    # Behind Render's proxy the request URL is already rewritten to the public
+    # host, but honour the forwarded headers where they are present.
+    host = request.headers.get("x-forwarded-host") or request.url.hostname or ""
+    scheme = request.headers.get("x-forwarded-proto") or request.url.scheme
+    if not host:
+        return []
+    served = f"{scheme}://{host.split(',')[0].strip()}"
+    if urlsplit(served).hostname in ("localhost", "127.0.0.1", "0.0.0.0"):
+        return []
+    if served.rstrip("/") == baked.rstrip("/"):
+        return []
+    return [
+        f"this build's canonical URLs point at {baked}, but it is being served "
+        f"from {served}. Search engines will attribute these pages to the wrong "
+        f"origin. Rebuild with --build-arg VITE_SITE_URL={served}"
+    ]
 
 
 class _ImmutableStatic(StaticFiles):

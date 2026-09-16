@@ -18,7 +18,7 @@ const target = process.env.VITE_API_TARGET ?? "http://127.0.0.1:8000";
  * tells search engines to index someone else's page -- so it is a build-time
  * variable with a loud default rather than a runtime guess.
  */
-const SITE_URL = (process.env.VITE_SITE_URL ?? "https://algostudio.onrender.com")
+const SITE_URL = (process.env.VITE_SITE_URL ?? "https://algostudio-wu5c.onrender.com")
   .replace(/\/+$/, "");
 
 /**
