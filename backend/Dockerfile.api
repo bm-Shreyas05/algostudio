@@ -13,6 +13,16 @@
 # Build from the repository root:
 #   docker build -f backend/Dockerfile.api -t algostudio-api:latest .
 
+# ---- stage 1a: the in-browser engine ---------------------------------------
+# Built in its own stage because it is produced from the *backend* source by a
+# Python script, and the stage that builds the SPA has Node but no Python.
+# Generating it here rather than committing it means the engine a visitor runs
+# in their browser can never drift from the engine in this image.
+FROM python:3.12-slim AS engine
+WORKDIR /src
+COPY backend/ /src/backend/
+RUN python /src/backend/tools/build_browser_bundle.py /out/algostudio.zip
+
 # ---- stage 1: build the SPA ------------------------------------------------
 FROM node:20-slim AS web
 
@@ -37,6 +47,14 @@ WORKDIR /web
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
 COPY frontend/ ./
+
+# The Python engine that runs in the visitor's browser, and the Pyodide runtime
+# that hosts it. Self-hosted rather than pulled from a CDN at runtime: the
+# privacy policy states there are no third-party requests, and that has to stay
+# true. ~12 MB on disk, ~5 MB over the wire once pre-compressed.
+COPY --from=engine /out/ ./public/engine/
+RUN node scripts/fetch-pyodide.mjs
+
 RUN npm run build
 
 # Fail the build rather than ship pages whose canonical tag is a placeholder.

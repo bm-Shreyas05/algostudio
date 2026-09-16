@@ -10,6 +10,7 @@ import {
 import { SourceView } from "./components/SourceView";
 import { PaneHead, Split } from "./components/Split";
 import { Transport } from "./components/Transport";
+import { browserEngineAvailable } from "./engine/browserEngine";
 import { liveAnnotations } from "./engine/reducer";
 import { MOBILE_QUERY, useMediaQuery } from "./lib/useMediaQuery";
 import { useExecution } from "./store/useExecution";
@@ -64,9 +65,22 @@ export default function App() {
   /* A deployment can be published with ALGOSTUDIO_ALLOW_ARBITRARY_CODE=0, which
      serves the bundled catalogue and refuses source typed by a visitor -- the
      honest posture for a public link with no container sandbox under it
-     (docs/20-deployment.md). Read it once from /health and disable the editor,
-     rather than letting the user type a program and collect a 403. */
-  const curated = health?.allow_arbitrary_code === false;
+     (docs/20-deployment.md). */
+  const serverRefusesCode = health?.allow_arbitrary_code === false;
+
+  /* ...but the server refusing is not the same as the app being unable. When
+     the in-browser engine is shipped, the visitor's code runs in this tab and
+     never reaches the server at all, so the editor works and the server's
+     refusal still stands (docs/21-pyodide-spike.md). Only when BOTH are
+     unavailable is there genuinely nothing to offer. */
+  const [localEngine, setLocalEngine] = useState(false);
+  useEffect(() => {
+    browserEngineAvailable().then(setLocalEngine).catch(() => setLocalEngine(false));
+  }, []);
+
+  const canEdit = !serverRefusesCode || localEngine;
+  const runsLocally = serverRefusesCode && localEngine;
+  const curated = !canEdit;
 
   /* ---- which binding this step changed ---------------------------------
      Read straight off the current event. The previous version rebuilt the whole
@@ -99,9 +113,13 @@ export default function App() {
   /* ---- run -------------------------------------------------------------- */
   const doRun = useCallback(async () => {
     setSelectedAlgorithm("");
-    const result = await exec.run(source, granularity);
+    // Where this executes is the whole security story: runsLocally means the
+    // source never leaves the tab.
+    const result = runsLocally
+      ? await exec.runLocal(source, granularity)
+      : await exec.run(source, granularity);
     if (result) setEditing(false);
-  }, [exec, source, granularity]);
+  }, [exec, source, granularity, runsLocally]);
 
   const loadAlgorithm = useCallback(async (id: string) => {
     setSelectedAlgorithm(id);
@@ -225,6 +243,14 @@ export default function App() {
                 automatically. This deployment runs the bundled catalogue only;
                 the editor is disabled because there is no container sandbox
                 behind it.
+              </p>
+            ) : runsLocally ? (
+              <p>
+                Press <strong>▶ Run</strong> to execute the code on the left, or
+                pick an algorithm from the menu above. Your own code runs
+                <strong> inside this tab</strong> — it is never uploaded, and the
+                server is never asked to execute it. The first run downloads a
+                Python runtime, once.
               </p>
             ) : (
               <p>
@@ -425,9 +451,15 @@ export default function App() {
           disabled={exec.busy || curated}
           title={curated
             ? "This deployment runs the bundled catalogue only — pick an algorithm"
-            : "Execute the source on the left"}
+            : runsLocally
+              ? "Runs in this tab; your code is never sent to the server"
+              : "Execute the source on the left"}
         >
-          {exec.busy ? "Running…" : "▶ Run"}
+          {exec.busy
+            ? exec.engineStatus && exec.engineStatus.stage !== "ready"
+              ? "Preparing…"
+              : "Running…"
+            : "▶ Run"}
         </button>
         <button
           onClick={() => setEditing((v) => !v)}
@@ -453,8 +485,18 @@ export default function App() {
             </>
           )}
           {health && (
-            <span title={`sandbox: ${health.sandbox_mode}`}>
-              {curated ? `${health.sandbox_mode} · catalogue only` : health.sandbox_mode}
+            <span
+              title={
+                runsLocally
+                  ? "Your code runs in this tab and is never sent to the server"
+                  : `sandbox: ${health.sandbox_mode}`
+              }
+            >
+              {runsLocally
+                ? "runs in your browser"
+                : curated
+                  ? `${health.sandbox_mode} · catalogue only`
+                  : health.sandbox_mode}
             </span>
           )}
           {/* The studio is a dead end without these: it is served at its own
@@ -520,6 +562,16 @@ export default function App() {
         </div>
       )}
       {exec.error && <div className="banner bad"><span>{exec.error}</span></div>}
+      {exec.engineStatus && exec.engineStatus.stage !== "ready" && exec.busy && (
+        <div className="banner">
+          <span>
+            <strong>{exec.engineStatus.message}</strong>{" "}
+            This happens once — afterwards your code runs instantly, in this
+            tab, and is never sent to the server.
+          </span>
+        </div>
+      )}
+
       {bundle?.summary.error && (
         <div className="banner bad">
           <span>

@@ -117,3 +117,54 @@ rather than research. The remaining work is:
    running a bundled algorithm.
 
 None of it is speculative. All of it is work.
+
+---
+
+## G. Built
+
+The spike said the rest was plumbing. It was, and it is now done.
+
+| | |
+|---|---|
+| Engine bundle | **83 KB**, 37 modules — `core`, `languages`, `runtime`, `lifters`, `state`, `shapes`, `analytics`, `store`, `browser` |
+| Pyodide runtime | 11.7 MB on disk, **~5.3 MB over the wire** (pre-compressed at build time) |
+| First run, cold | ~3 s including download, start and execute |
+| Later runs | no network at all |
+| Image size | 285 MB → **314 MB** |
+
+**`algostudio/browser/engine.py`** composes the same pipeline the server runs —
+analyse, instrument, execute, lift, reduce, resolve — on top of the same
+`runtime/child_main.py`, so the guarantee in §C carries over rather than being
+re-established. There is no sandbox module in the bundle, and that is
+deliberate: the tab is the boundary, and shipping one would imply otherwise.
+
+**The security posture did not move.** `ALGOSTUDIO_ALLOW_ARBITRARY_CODE` stays
+`0`; `POST /executions` still returns 403; `preflight` still passes. The server
+goes on refusing to execute anything it did not ship with — the visitor's code
+simply never asks it to. Verified in the browser against the built container:
+the only API calls a run makes are `/algorithms` and `/health`, both from page
+load.
+
+**Self-hosted, not CDN.** The privacy policy states there are no third-party
+requests and the live site was verified against that claim. Loading Pyodide
+from jsdelivr would have cost nothing and made the claim false. 29 MB of image
+is the cheaper price.
+
+`_PrecompressedStatic` serves `foo.wasm.gz` to clients that accept gzip.
+Compressing 8 MB of wasm per request on an instance with a tenth of a CPU would
+stall the event loop for every other visitor; compressing once at build time
+costs the server nothing and turns ~11 MB of transfer into ~5 MB.
+
+### What this changes for a reader of the earlier documents
+
+`docs/20-deployment.md` §A presents two honest options: a curated deployment
+that executes nothing a visitor wrote, or a container sandbox. There is now a
+third, and it is strictly better than both for the public case:
+
+> **Execute it on the visitor's machine.** No container to run, no privileged
+> socket to mount, no code to trust — and the question "is your sandbox strong
+> enough?" stops being asked, because there is no server-side sandbox in the
+> path at all.
+
+The pages that claimed the editor was disabled — the privacy policy, both FAQs
+— have been corrected, because they were true when written and are not now.

@@ -30,3 +30,9 @@ Thumbs.db
 # Local overrides
 .env
 .env.local
+
+# The in-browser engine's assets: the Pyodide runtime is fetched by
+# frontend/scripts/fetch-pyodide.mjs and the engine zip is generated from the
+# backend by tools/build_browser_bundle.py. Both are build outputs.
+frontend/public/pyodide/
+frontend/public/engine/

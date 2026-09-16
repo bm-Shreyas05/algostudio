@@ -86,10 +86,10 @@
               },
               {
                 "@type": "Question",
-                "name": "Why can't I run my own code on the public site?",
+                "name": "Can I run my own code on the public site?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "Executing source typed by a stranger safely requires a container sandbox for each execution, and the free hosting tier cannot nest containers. In-process restrictions such as an import allowlist are defense in depth and are not a security boundary, because CPython cannot be sandboxed inside its own process. Rather than pretend otherwise, the public deployment runs the 49 bundled algorithms only and disables the editor. Running the project locally, or on a host with Docker, enables it."
+                  "text": "Yes. Code you type runs inside your own browser, not on this server: the page downloads a Python runtime once and executes your program locally, which is why the server can go on refusing to execute source it did not ship with. Your code is never uploaded. The trade-offs are that the first run downloads about five megabytes, and that a run of your own code exists only in that tab."
                 }
               },
               {
@@ -267,21 +267,27 @@
           </details>
 
           <details>
-            <summary>Why can't I run my own code on the public site?</summary>
+            <summary>Can I run my own code on the public site?</summary>
             <div>
               <p>
-                Executing source typed by a stranger safely requires a container
-                sandbox for each execution, and the free hosting tier cannot nest
-                containers. In-process restrictions such as an import allowlist are
-                defense in depth and are <em>not</em> a security boundary, because
-                CPython cannot be sandboxed inside its own process.
+                Yes — and it never reaches this server. Executing a stranger's code
+                <em>on a server</em> safely needs a container sandbox for every
+                execution, and a free tier cannot nest containers. In-process
+                restrictions such as an import allowlist are defense in depth and
+                are <em>not</em> a security boundary, because CPython cannot be
+                sandboxed inside its own process.
               </p>
               <p>
-                Rather than pretend otherwise, the public deployment runs the 49
-                bundled algorithms only and disables the editor. Running the project
-                locally, or on a host with Docker, enables it — the
-                <a href="https://github.com/bm-Shreyas05/algostudio#quick-start" rel="noopener">README</a>
-                has the two commands.
+                So it does not run on the server at all. The page downloads a Python
+                runtime once and runs your program <strong>inside your own browser
+                tab</strong>, on your machine, under the sandbox your browser already
+                enforces on every site you visit. The server goes on refusing to
+                execute anything it did not ship with.
+              </p>
+              <p>
+                Two honest trade-offs: the first run downloads about five megabytes,
+                and a run of your own code exists only in that tab — close it and
+                the recording is gone.
               </p>
             </div>
           </details>

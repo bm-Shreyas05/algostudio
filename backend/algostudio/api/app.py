@@ -13,6 +13,7 @@ import time
 from collections import defaultdict, deque
 from contextlib import asynccontextmanager
 from functools import lru_cache
+from mimetypes import guess_type
 from pathlib import Path
 from typing import Any, AsyncIterator
 from urllib.parse import urlsplit
@@ -22,6 +23,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.datastructures import Headers
 
 from ..ai import modes as ai_modes
 from ..analysis import static as static_analysis
@@ -476,6 +478,42 @@ def _canonical_warnings(request: Request) -> list[str]:
     ]
 
 
+class _PrecompressedStatic(StaticFiles):
+    """Serve ``foo.wasm.gz`` when the client asked for ``foo.wasm``.
+
+    The Pyodide runtime is 8 MB of wasm and 2 MB of stdlib. Compressing that
+    per request is not an option here: the free instance has a tenth of a CPU,
+    and gzipping 8 MB on it would stall the event loop for every other visitor.
+    The files are compressed once at build time instead (see
+    ``frontend/scripts/fetch-pyodide.mjs``), which turns ~11 MB of transfer
+    into ~5 MB and costs the server nothing.
+
+    Cached ``immutable``: the directory name carries the Pyodide version, so an
+    upgrade changes the URL rather than the bytes behind a stale one.
+    """
+
+    async def get_response(self, path: str, scope) -> Response:
+        headers = Headers(scope=scope)
+        if "gzip" in headers.get("accept-encoding", ""):
+            try:
+                response = await super().get_response(path + ".gz", scope)
+            except Exception:
+                response = None
+            if response is not None and response.status_code == 200:
+                response.headers["Content-Encoding"] = "gzip"
+                response.headers["Cache-Control"] = IMMUTABLE
+                response.headers["Vary"] = "Accept-Encoding"
+                # The media type must describe the *decoded* body, not the gzip.
+                media = guess_type(path)[0]
+                if media:
+                    response.headers["Content-Type"] = media
+                return response
+        response = await super().get_response(path, scope)
+        response.headers["Cache-Control"] = IMMUTABLE
+        response.headers["Vary"] = "Accept-Encoding"
+        return response
+
+
 class _ImmutableStatic(StaticFiles):
     """Static files whose name contains their content hash.
 
@@ -517,6 +555,20 @@ def _mount_frontend(app: FastAPI) -> None:
     assets = dist / "assets"
     if assets.is_dir():
         app.mount("/assets", _ImmutableStatic(directory=str(assets)), name="assets")
+
+    # The in-browser engine: the Pyodide runtime, and the Python packages that
+    # execute a visitor's own code on their own machine (docs/21).  Absent from
+    # a backend-only checkout, in which case the editor stays disabled and the
+    # site is exactly what it was.
+    pyodide = dist / "pyodide"
+    if pyodide.is_dir():
+        app.mount("/pyodide", _PrecompressedStatic(directory=str(pyodide)),
+                  name="pyodide")
+    engine = dist / "engine"
+    if engine.is_dir():
+        # Not immutable: this zip changes whenever the backend does, and it is
+        # 83 KB, so revalidating it is cheap and being stale is not.
+        app.mount("/engine", StaticFiles(directory=str(engine)), name="engine")
 
     for url, filename in ROUTES.items():
         if not (dist / filename).is_file():

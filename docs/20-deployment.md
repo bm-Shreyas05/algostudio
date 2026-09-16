@@ -12,10 +12,14 @@ exactly two honest answers:
 
 | | What runs | Boundary | Where it can be published |
 |---|---|---|---|
-| **Curated mode** | the 49 bundled plugins only | none needed — no visitor code is ever executed | anywhere: a free tier, a college server, a small VPS |
+| **Curated mode** | the 49 bundled plugins only | none needed — no visitor code is ever executed *on the server* | anywhere: a free tier, a college server, a small VPS |
 | **Full mode** | anything a visitor types | `DockerSandbox`, one container per execution | a host whose Docker daemon you control |
 
-There is no third option. In particular, **"full mode without Docker" is not a deployment,
+Since this was written there **is** a third option, and the public deployment
+now uses it: run the visitor's code in the visitor's browser, so the server
+executes nothing it did not ship with and there is no server-side sandbox in
+the path at all. See `docs/21-pyodide-spike.md` §G. The two options below still
+describe what the *server* can be asked to do. In particular, **"full mode without Docker" is not a deployment,
 it is an incident**. `docs/06-sandbox.md` §L states it and the code repeats it: the import
 allowlist and builtins denylist in `runtime/policy.py` are defense in depth. CPython cannot
 be sandboxed in-process — `__subclasses__` walking, C-level recursion, and the sheer surface

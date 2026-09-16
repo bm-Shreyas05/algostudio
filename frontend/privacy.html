@@ -165,11 +165,17 @@
 
         <h3>Code you write</h3>
         <p>
-          On this public deployment the code editor is disabled and the server
-          refuses source it did not ship with, so <strong>no code of yours is
-          submitted or stored here</strong>. If you run AlgoStudio yourself with the
-          editor enabled, the source you submit is stored in that installation's own
-          database as part of the recording, under your control, on your machine.
+          <strong>Code you write in the editor never leaves your browser.</strong>
+          It is executed on your own machine by a Python runtime the page
+          downloads once, so it is never uploaded, never stored here, and never
+          seen by this server &mdash; which continues to refuse to execute source
+          it did not ship with. There is nothing for us to keep, because nothing
+          arrives.
+        </p>
+        <p>
+          The consequence worth knowing: a run of your own code exists only in
+          that tab. Closing it discards the recording, and there is no link that
+          would let anyone else open it.
         </p>
 
         <h2 id="logs">Server logs and hosting</h2>

@@ -3,6 +3,9 @@ import { api, ApiError } from "../api/client";
 import type {
   Analytics, AsEvent, ExecutionState, ExecutionSummary, ViewDescriptor,
 } from "../api/types";
+import {
+  getBrowserEngine, type EngineStatus,
+} from "../engine/browserEngine";
 import { initialState } from "../engine/reducer";
 import { Timeline } from "../engine/timeline";
 
@@ -57,6 +60,9 @@ export function useExecution() {
   const [transport, setTransport] = useState<Transport>({ playing: false, speed: 8 });
   const [stepMode, setStepMode] = useState<StepMode>("line");
   const [breakpoints, setBreakpoints] = useState<Set<number>>(new Set());
+  // Loading the in-browser engine takes seconds the first time. The UI has
+  // to say what is happening, or a click on Run looks like a hang.
+  const [engineStatus, setEngineStatus] = useState<EngineStatus | null>(null);
 
   const timelineRef = useRef<Timeline | null>(null);
   const stateRef = useRef<ExecutionState>(state);
@@ -110,6 +116,72 @@ export function useExecution() {
       return null;
     }
   }, [load]);
+
+  /**
+   * Run source the visitor wrote, in this tab.
+   *
+   * Deliberately a separate path from `run`, not a flag on it. The two differ
+   * in where the code executes, which is the single most important thing about
+   * this app's security posture — burying that in a boolean would make the
+   * call sites read as though it did not matter.
+   *
+   * The result is assembled into the same ExecutionBundle the HTTP path
+   * produces, so everything downstream — the reducer, the timeline, every view
+   * — is unaware of which engine ran.
+   */
+  const runLocal = useCallback(
+    async (source: string, granularity: string) => {
+      setBusy(true);
+      setError("");
+      try {
+        const engine = await getBrowserEngine(setEngineStatus);
+        const result = engine.run(source, granularity);
+
+        if (result.status === "unsupported") {
+          setError(result.error?.message ?? "That program uses something unsupported.");
+          setBusy(false);
+          return null;
+        }
+
+        const tl = new Timeline(result.events);
+        timelineRef.current = tl;
+        setBundle({
+          summary: {
+            execution_id: "local",
+            status: result.status,
+            language: "python",
+            algorithm_id: null,
+            granularity,
+            event_count: result.event_count,
+            wall_ms: result.wall_ms,
+            sandbox_mode: "browser",
+            capability_report: result.capability_report,
+            error: result.error,
+            source,
+            lifters: result.meta?.lifters ?? true,
+          } as any,
+          events: result.events,
+          analytics: result.analytics,
+          views: engine.views(Math.max(0, result.last_step)),
+        });
+        publish(tl.stateAt(0));
+        setTransport((t) => ({ ...t, playing: tl.lastStep > 0 }));
+        return result;
+      } catch (e) {
+        setError(
+          e instanceof Error
+            ? `The in-browser engine failed to start: ${e.message}`
+            : String(e),
+        );
+        timelineRef.current = null;
+        setBundle(null);
+        return null;
+      } finally {
+        setBusy(false);
+      }
+    },
+    [publish],
+  );
 
   const runAlgorithm = useCallback(
     async (id: string, inputs: Record<string, any>, granularity: string) => {
@@ -230,8 +302,8 @@ export function useExecution() {
 
   return {
     bundle, state, busy, error, transport, stepMode, breakpoints, timeline,
-    currentEvent, setTransport, setStepMode, run, runAlgorithm, load, seek,
-    stepForward, stepBack, jump, toggleBreakpoint, runToBreakpoint, setError,
-    replay,
+    currentEvent, setTransport, setStepMode, run, runLocal, runAlgorithm, load,
+    seek, stepForward, stepBack, jump, toggleBreakpoint, runToBreakpoint,
+    setError, replay, engineStatus,
   };
 }
