@@ -14,9 +14,10 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, AsyncIterator
 
-from fastapi import Depends, FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.middleware.gzip import GZipMiddleware
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from ..ai import modes as ai_modes
@@ -61,6 +62,12 @@ def create_app() -> FastAPI:
         ),
         lifespan=_lifespan,
     )
+    # HTML, JSON and the event stream are all highly compressible text, and the
+    # event stream is by far the largest thing this API sends -- a 445-event
+    # recording is mostly repeated keys.  500 bytes is the floor below which
+    # the header overhead is not worth it.
+    app.add_middleware(GZipMiddleware, minimum_size=500)
+
     # "none" means the SPA is served from this same process, so there is no
     # cross-origin caller to allow.  The development default is a wildcard
     # because the Vite dev server is a different origin.
@@ -396,11 +403,118 @@ class RateLimiter:
         window.append(now)
 
 
+#: Clean URL -> file in the built site.  Mirrors PAGES in vite.config.ts; the
+#: sitemap is generated from that list, so if these two ever disagree the
+#: sitemap advertises a URL that 404s.  tools/check_site.py asserts they match.
+ROUTES = {
+    "/": "index.html",
+    "/app": "app.html",
+    "/faq": "faq.html",
+    "/privacy": "privacy.html",
+    "/terms": "terms.html",
+}
+
+#: Served from the site root under their own names.
+ROOT_FILES = (
+    "robots.txt", "sitemap.xml", "favicon.ico", "favicon.svg", "og.png",
+    "site.webmanifest", "apple-touch-icon.png", "icon-192.png", "icon-512.png",
+)
+
+#: Hashed asset names change whenever their content does, so they can be
+#: cached forever.  HTML must not be, or a deploy is invisible to returning
+#: visitors until their cache expires.
+IMMUTABLE = "public, max-age=31536000, immutable"
+REVALIDATE = "public, max-age=0, must-revalidate"
+ROOT_FILE_CACHE = "public, max-age=86400"
+
+
+class _ImmutableStatic(StaticFiles):
+    """Static files whose name contains their content hash.
+
+    Vite writes ``app-176iMQdH.js``; a change to the file changes the name, so
+    the old name can never point at new content and a year-long cache is safe.
+    Without this the browser revalidates every asset on every visit, which on a
+    cold free-tier instance is the difference between an instant second load
+    and another round trip per file.
+    """
+
+    def file_response(self, *args, **kwargs) -> Response:
+        response = super().file_response(*args, **kwargs)
+        response.headers["Cache-Control"] = IMMUTABLE
+        return response
+
+
 def _mount_frontend(app: FastAPI) -> None:
-    """Serve the built SPA when it exists, so one process runs the whole demo."""
+    """Serve the built site: clean URLs, real 404s, cache headers.
+
+    One process serves the API and the site from a single origin, which is why
+    no CORS grant is needed in production and why there is no separate static
+    host to keep in sync.  When ``frontend/dist`` is absent -- a backend-only
+    checkout, or before ``npm run build`` -- none of this is registered and the
+    API behaves exactly as it did before.
+    """
     dist = Path(__file__).resolve().parents[3] / "frontend" / "dist"
-    if dist.is_dir():
-        app.mount("/", StaticFiles(directory=str(dist), html=True), name="frontend")
+    if not dist.is_dir():
+        return
+
+    def page(filename: str, status: int = 200) -> FileResponse:
+        return FileResponse(
+            dist / filename,
+            status_code=status,
+            media_type="text/html; charset=utf-8",
+            headers={"Cache-Control": REVALIDATE},
+        )
+
+    # Content-hashed bundles.  Mounted before the catch-all so it wins.
+    assets = dist / "assets"
+    if assets.is_dir():
+        app.mount("/assets", _ImmutableStatic(directory=str(assets)), name="assets")
+
+    for url, filename in ROUTES.items():
+        if not (dist / filename).is_file():
+            continue
+
+        def make(filename: str = filename):
+            def handler() -> FileResponse:
+                return page(filename)
+            return handler
+
+        app.get(url, include_in_schema=False)(make())
+
+        # /app.html and /app would otherwise be two URLs for one page, which
+        # splits ranking signals.  The canonical tag says which one counts;
+        # this makes the other one stop existing.
+        if url != "/":
+            app.get(f"/{filename}", include_in_schema=False)(
+                lambda url=url: RedirectResponse(url, status_code=301)
+            )
+
+    for name in ROOT_FILES:
+        if not (dist / name).is_file():
+            continue
+
+        def make_root(name: str = name):
+            def handler() -> FileResponse:
+                return FileResponse(
+                    dist / name, headers={"Cache-Control": ROOT_FILE_CACHE}
+                )
+            return handler
+
+        app.get(f"/{name}", include_in_schema=False)(make_root())
+
+    @app.get("/{path:path}", include_in_schema=False)
+    def not_found(path: str) -> Response:
+        """Anything unmatched.
+
+        An API path that reached here is a genuine missing endpoint and must
+        stay JSON -- handing a client an HTML error page is how a fetch()
+        failure turns into an unreadable parse error.
+        """
+        if path.startswith(("api/", "ws/")):
+            raise HTTPException(status_code=404, detail=f"no such endpoint: /{path}")
+        if (dist / "404.html").is_file():
+            return page("404.html", status=404)
+        raise HTTPException(status_code=404, detail="not found")
 
 
 app = create_app()

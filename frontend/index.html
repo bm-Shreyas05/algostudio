@@ -2,11 +2,390 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>AlgoStudio</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>AlgoStudio — Step backwards through a running Python program</title>
+    <meta
+      name="description"
+      content="AlgoStudio records what a Python program does as a stream of events, then rebuilds its state at any step — forwards or backwards. 49 algorithms included."
+    />
+    <link rel="canonical" href="%SITE_URL%/" />
+    <meta name="robots" content="index, follow" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#0d1117" />
+
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="alternate icon" href="/favicon.ico" sizes="48x48" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="AlgoStudio" />
+    <meta property="og:url" content="%SITE_URL%/" />
+    <meta property="og:title" content="AlgoStudio — Step backwards through a running Python program" />
+    <meta
+      property="og:description"
+      content="An event-driven execution engine, not a set of canned animations. Step backwards, inspect any moment, and see views inferred from your data's runtime shape."
+    />
+    <meta property="og:image" content="%SITE_URL%/og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta
+      property="og:image:alt"
+      content="AlgoStudio wordmark above the words: step backwards through a running program."
+    />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="AlgoStudio — Step backwards through a running Python program" />
+    <meta
+      name="twitter:description"
+      content="An event-driven execution engine, not a set of canned animations. 49 algorithms, views inferred from runtime shape."
+    />
+    <meta name="twitter:image" content="%SITE_URL%/og.png" />
+    <meta
+      name="twitter:image:alt"
+      content="AlgoStudio wordmark above the words: step backwards through a running program."
+    />
+
+    <link rel="stylesheet" href="/src/site.css" />
+    <!--ANALYTICS-->
+
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "WebSite",
+            "@id": "%SITE_URL%/#website",
+            "url": "%SITE_URL%/",
+            "name": "AlgoStudio",
+            "description": "Event-driven program execution and visualization platform.",
+            "inLanguage": "en"
+          },
+          {
+            "@type": "SoftwareApplication",
+            "@id": "%SITE_URL%/#app",
+            "name": "AlgoStudio",
+            "url": "%SITE_URL%/app",
+            "applicationCategory": "DeveloperApplication",
+            "applicationSubCategory": "Program visualization and debugging",
+            "operatingSystem": "Any modern web browser",
+            "description": "AlgoStudio instruments Python source, records execution as a stream of typed events, and reconstructs program state at any step in either direction. Visualizations are resolved from the runtime shape of the data rather than written per algorithm.",
+            "featureList": [
+              "Reverse stepping through execution",
+              "49 built-in algorithms across 9 categories",
+              "Views inferred from runtime data shape",
+              "Measured complexity curves from statement counts",
+              "Execution-grounded explanations"
+            ],
+            "isAccessibleForFree": true,
+            "offers": {
+              "@type": "Offer",
+              "price": "0",
+              "priceCurrency": "USD"
+            },
+            "license": "https://github.com/bm-Shreyas05/algostudio",
+            "codeRepository": "https://github.com/bm-Shreyas05/algostudio",
+            "programmingLanguage": "Python"
+          }
+        ]
+      }
+    </script>
   </head>
+
   <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
+    <a class="skip" href="#main">Skip to main content</a>
+
+    <header class="site-head">
+      <div class="wrap">
+        <a class="brand" href="/">
+          <img src="/favicon.svg" width="26" height="26" alt="" />
+          Algo<span>Studio</span>
+        </a>
+        <nav class="site-nav" aria-label="Primary">
+          <a href="#how">How it works</a>
+          <a href="#inside">What's inside</a>
+          <a href="/faq">FAQ</a>
+          <a href="https://github.com/bm-Shreyas05/algostudio" rel="noopener">GitHub</a>
+          <a href="/app">Open the Studio</a>
+        </nav>
+      </div>
+    </header>
+
+    <main id="main">
+      <!-- ---------------------------------------------------------- hero -->
+      <div class="hero">
+        <div class="wrap">
+          <h1>Step backwards through <em>a running program</em>.</h1>
+          <p class="lede">
+            AlgoStudio instruments your Python, records every assignment, comparison
+            and call as a typed event, and rebuilds the program's state at any
+            moment — forwards or backwards. The picture you see is inferred from the
+            shape of your data at runtime, not written by hand for each algorithm.
+          </p>
+          <div class="cta-row">
+            <a class="cta primary" href="/app">
+              Open the Studio
+              <span aria-hidden="true">→</span>
+            </a>
+            <a class="cta" href="#how">See how it works</a>
+          </div>
+          <p class="cta-note">
+            No sign-up, nothing to install, 49 algorithms ready to run.
+          </p>
+        </div>
+      </div>
+
+      <!-- --------------------------------------------------------- how -->
+      <section id="how">
+        <div class="wrap">
+          <h2>How it works</h2>
+          <p class="section-lede">
+            One pipeline, and every algorithm goes through all of it. Nothing in the
+            chain below knows the name of the program it is running.
+          </p>
+          <ol class="pipe">
+            <li>
+              <b>1 · Source</b>
+              <span>Your Python, or one of the bundled algorithms.</span>
+            </li>
+            <li>
+              <b>2 · Instrument</b>
+              <span>The AST is rewritten so each sub-expression reports itself.</span>
+            </li>
+            <li>
+              <b>3 · Execute</b>
+              <span>In an isolated process under time, memory and event budgets.</span>
+            </li>
+            <li>
+              <b>4 · Events</b>
+              <span>A stream of typed records — every one reversible.</span>
+            </li>
+            <li>
+              <b>5 · State</b>
+              <span>A reducer folds events into state; its inverse steps back.</span>
+            </li>
+            <li>
+              <b>6 · View</b>
+              <span>Detectors read the data's shape and choose how to draw it.</span>
+            </li>
+          </ol>
+        </div>
+      </section>
+
+      <!-- ------------------------------------------------------ different -->
+      <section id="different">
+        <div class="wrap">
+          <h2>Why this isn't an algorithm visualizer</h2>
+          <p class="section-lede">
+            The usual approach is one hand-written animation per algorithm. That
+            scales linearly with effort and teaches the animation rather than the
+            program. AlgoStudio has no per-algorithm drawing code at all.
+          </p>
+          <div class="grid three">
+            <article class="card">
+              <h3>Adding an algorithm touches no engine code</h3>
+              <p>
+                A new algorithm is a directory containing source and metadata. No
+                view, no animation, no branch in a switch statement. The same is
+                true of a new language: the frontend is the only layer that knows
+                Python exists.
+              </p>
+            </article>
+            <article class="card">
+              <h3>Reverse stepping is exact, not approximate</h3>
+              <p>
+                Every mutating event carries the old value beside the new one, so
+                stepping backwards applies one inverse in constant time. Nothing is
+                re-executed, and the state you land on is the state that was.
+              </p>
+            </article>
+            <article class="card">
+              <h3>The view is inferred from your data</h3>
+              <p>
+                A dictionary of lists that refer to their own keys is drawn as a
+                graph. A list of numbers becomes an array with pointers. Detectors
+                score candidate shapes; no detector is allowed to ask what the
+                algorithm is called.
+              </p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <!-- --------------------------------------------------------- scope -->
+      <section id="scope">
+        <div class="wrap">
+          <h2>What it does <em>not</em> do</h2>
+          <p class="section-lede">
+            A tool that overstates its boundary teaches students to distrust it the
+            first time it fails. So, plainly:
+          </p>
+          <div class="grid two">
+            <article class="card">
+              <h3>It does not run every Python program</h3>
+              <p>
+                The supported subset is real and finite — and documented, feature by
+                feature, in the capability matrix. Async, metaclasses, multiple
+                inheritance and most of the standard library sit outside it. The app
+                tells you before it runs, not after it fails.
+              </p>
+            </article>
+            <article class="card">
+              <h3>It is not a production debugger</h3>
+              <p>
+                Instrumentation makes programs substantially slower and the event
+                budget stops runaway loops. This is a tool for understanding a
+                program of teaching size, not for profiling a service.
+              </p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <!-- -------------------------------------------------------- inside -->
+      <section id="inside">
+        <div class="wrap">
+          <h2>What's inside</h2>
+          <p class="section-lede">
+            Measured, not estimated. Every number below comes from a harness in the
+            repository that you can run yourself.
+          </p>
+          <div class="grid three">
+            <article class="card">
+              <h3><span class="k">49</span> algorithms</h3>
+              <p>Across nine categories, each one a plain data directory.</p>
+            </article>
+            <article class="card">
+              <h3><span class="k green">46</span> semantics fixtures</h3>
+              <p>
+                Programs whose instrumented output matches native Python exactly.
+                If this ever fails, everything downstream is fiction.
+              </p>
+            </article>
+            <article class="card">
+              <h3><span class="k amber">51/51</span> time-travel checks</h3>
+              <p>
+                Programs where stepping back and seeking land on precisely the
+                state a full forward replay produces.
+              </p>
+            </article>
+          </div>
+
+          <h3 id="catalogue" style="margin: 34px 0 14px">The catalogue</h3>
+          <ul class="tags">
+            <li><b>Graphs</b> · 10</li>
+            <li><b>Sorting</b> · 9</li>
+            <li><b>Dynamic programming</b> · 8</li>
+            <li><b>Searching</b> · 5</li>
+            <li><b>Strings</b> · 4</li>
+            <li><b>Number theory</b> · 4</li>
+            <li><b>Backtracking</b> · 4</li>
+            <li><b>Data structures</b> · 3</li>
+            <li><b>Trees</b> · 2</li>
+          </ul>
+          <p class="cta-note">
+            Dijkstra, BFS, Kruskal, Floyd–Warshall, merge sort, edit distance,
+            N-Queens, the sieve, and forty-one more — all running through the same
+            engine as anything you write yourself.
+          </p>
+          <div class="cta-row" style="margin-top: 26px">
+            <a class="cta primary" href="/app">Open the Studio<span aria-hidden="true">→</span></a>
+            <a class="cta" href="https://github.com/bm-Shreyas05/algostudio" rel="noopener">
+              Read the source
+            </a>
+          </div>
+        </div>
+      </section>
+
+      <!-- ----------------------------------------------------------- faq -->
+      <section id="faq-preview">
+        <div class="wrap">
+          <h2>Common questions</h2>
+          <p class="section-lede">
+            The <a href="/faq">full FAQ</a> covers the engine, the sandbox and the
+            supported language subset in more detail.
+          </p>
+          <div class="faq">
+            <details>
+              <summary>Can I run my own code on this site?</summary>
+              <div>
+                <p>
+                  Not on the hosted demo. Executing code typed by a stranger needs a
+                  container sandbox for every execution, and the free hosting tier
+                  cannot provide one — so the public site runs the 49 bundled
+                  algorithms only, and says so in the interface rather than failing
+                  quietly. Run the project locally and the editor is enabled.
+                </p>
+              </div>
+            </details>
+            <details>
+              <summary>How is stepping backwards possible without re-running?</summary>
+              <div>
+                <p>
+                  Each event that changes state stores the old value next to the new
+                  one, so the inverse of a step is a single substitution. Jumping to
+                  an arbitrary step restores the nearest checkpoint and replays a
+                  bounded number of events, which is why scrubbing the timeline stays
+                  responsive on long runs.
+                </p>
+              </div>
+            </details>
+            <details>
+              <summary>Does it use cookies or track me?</summary>
+              <div>
+                <p>
+                  No cookies, no accounts, no advertising or tracking scripts. Panel
+                  sizes are remembered in your browser's local storage and never
+                  leave your device. The
+                  <a href="/privacy">privacy policy</a> says exactly what is stored
+                  and for how long.
+                </p>
+              </div>
+            </details>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-foot">
+      <div class="wrap">
+        <div class="foot-grid">
+          <div>
+            <h2>AlgoStudio</h2>
+            <p class="foot-note">
+              A universal event-driven program execution and visualization platform,
+              built as a final-year engineering project. The engine, the design
+              documents and the evaluation protocol are all public.
+            </p>
+          </div>
+          <nav aria-label="Product">
+            <h2>Product</h2>
+            <ul>
+              <li><a href="/app">Open the Studio</a></li>
+              <li><a href="#how">How it works</a></li>
+              <li><a href="#inside">What's inside</a></li>
+              <li><a href="/faq">FAQ</a></li>
+            </ul>
+          </nav>
+          <nav aria-label="Project and legal">
+            <h2>Project</h2>
+            <ul>
+              <li>
+                <a href="https://github.com/bm-Shreyas05/algostudio" rel="noopener">Source on GitHub</a>
+              </li>
+              <li>
+                <a href="https://github.com/bm-Shreyas05/algostudio/issues" rel="noopener">Report an issue</a>
+              </li>
+              <li><a href="/privacy">Privacy</a></li>
+              <li><a href="/terms">Terms</a></li>
+            </ul>
+          </nav>
+        </div>
+        <div class="foot-bottom">
+          <span>© %YEAR% AlgoStudio. Educational project.</span>
+          <span>No cookies. No accounts. No tracking.</span>
+        </div>
+      </div>
+    </footer>
   </body>
 </html>

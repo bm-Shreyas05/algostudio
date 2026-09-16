@@ -78,7 +78,17 @@ export function TreeView({ object, heap, descriptor, allAnnotations, state }: Vi
 
   return (
     <div className="view tree-view">
-      <svg viewBox={`0 0 ${width} ${height}`} width="100%" preserveAspectRatio="xMidYMid meet">
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        width="100%"
+        preserveAspectRatio="xMidYMid meet"
+        role="img"
+        aria-label={
+          `Tree of ${nodes.length} nodes` +
+          (pathRefs.size > 1 ? `, with a path of ${pathRefs.size} nodes highlighted` : "") +
+          "."
+        }
+      >
         {nodes.map((node) => {
           const parent = node.parent ? byId.get(node.parent) : undefined;
           if (!parent) return null;
@@ -163,7 +173,13 @@ export function CallTreeView({ state }: { state: ViewProps["state"] }) {
 
   return (
     <div className="view calltree-view">
-      <svg viewBox={`0 0 ${width} ${height}`} width="100%" height={Math.min(height, 320)}>
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        width="100%"
+        height={Math.min(height, 320)}
+        role="img"
+        aria-label={`Call tree with ${nodes.length} calls, ${activeIds.size} still on the stack.`}
+      >
         {nodes.map((node) =>
           node.parent && byId.has(node.parent) ? (
             <line

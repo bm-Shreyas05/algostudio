@@ -13,6 +13,8 @@ services:
       context: .
       dockerfile: backend/Dockerfile.api
       target: api                  # includes the built SPA
+      args:
+        INSTALL_DOCKER_CLI: "1"   # these stacks run ALGOSTUDIO_SANDBOX=docker
     image: algostudio-api:latest
     restart: unless-stopped
     env_file: .env

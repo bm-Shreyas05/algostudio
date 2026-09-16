@@ -15,19 +15,47 @@
 
 # ---- stage 1: build the SPA ------------------------------------------------
 FROM node:20-slim AS web
+
+# Canonical URLs, Open Graph tags and the sitemap are absolute by
+# specification, so the build has to be told where it will be served from.
+# A canonical pointing at the wrong origin is worse than none at all, which is
+# why this is an explicit argument with a default rather than a guess.
+ARG VITE_SITE_URL=https://algostudio.onrender.com
+# Cookieless analytics, off unless a source is supplied. Empty means the built
+# pages contain no third-party request at all.
+ARG VITE_ANALYTICS_SRC=""
+ARG VITE_ANALYTICS_DOMAIN=""
+ENV VITE_SITE_URL=$VITE_SITE_URL \
+    VITE_ANALYTICS_SRC=$VITE_ANALYTICS_SRC \
+    VITE_ANALYTICS_DOMAIN=$VITE_ANALYTICS_DOMAIN
+
 WORKDIR /web
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
 COPY frontend/ ./
 RUN npm run build
 
+# Fail the build rather than ship pages whose canonical tag is a placeholder.
+# A wrong canonical is silent: the page renders, and search engines quietly
+# attribute it to another origin.
+RUN grep -q "$VITE_SITE_URL" dist/sitemap.xml \
+ && ! grep -rq "%SITE_URL%" dist/ \
+ && echo "site built for $VITE_SITE_URL"
+
 # ---- stage 2: the backend --------------------------------------------------
 FROM python:3.12-slim AS api-base
 
-# docker-cli only, never the daemon: DockerSandbox shells out to `docker run`
-# against the host's socket.
+# The docker CLI -- never the daemon -- is what DockerSandbox shells out to for
+# ALGOSTUDIO_SANDBOX=docker. It costs roughly 250 MB, and a curated deployment
+# executes nothing a visitor wrote, so it needs no container boundary and
+# should leave this out. It defaults to OFF: a tool that grants control of the
+# host daemon is opt-in, and the compose files that need it ask for it.
+ARG INSTALL_DOCKER_CLI=0
 RUN apt-get update \
- && apt-get install -y --no-install-recommends docker.io ca-certificates \
+ && apt-get install -y --no-install-recommends ca-certificates \
+ && if [ "$INSTALL_DOCKER_CLI" = "1" ]; then \
+      apt-get install -y --no-install-recommends docker.io; \
+    fi \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

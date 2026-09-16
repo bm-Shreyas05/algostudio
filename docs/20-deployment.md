@@ -150,6 +150,7 @@ box runs a classroom.
 | 1 | Engine invariants hold | `make check` — 46 fixtures match native semantics, 51/51 time-travel |
 | 2 | Every algorithm visualizes | `make audit` — 48/49 clean (`fast_power` is pure arithmetic; the `scalars` view is the honest answer) |
 | 3 | Deployment surface behaves | `make test` — 12 passed |
+| 3b | The public site is intact | `make check-site` — 0 failures, 0 warnings |
 | 4 | Configuration is safe to expose | `make preflight` — must exit 0 |
 | 5 | No secrets in the tree | `.env` gitignored; `.env.example` carries names, never values |
 | 6 | SPA built | `make build`, then `frontend/dist` exists |
@@ -185,3 +186,72 @@ box runs a classroom.
 > container with no network, a read-only rootfs and dropped capabilities. The combination
 > "visitor code without a container" is refused by `tools/preflight.py`, because the
 > in-process restrictions are defense in depth and not a security boundary.
+
+---
+
+## I. The public site
+
+Deploying meant the project needed a front door. The studio is a tool: it is
+useful once you are already there, and it explains nothing to a search engine,
+because its homepage was 215 KB of JavaScript that renders an empty IDE.
+
+**Structure.** The studio moved to `/app` and a static landing page took `/`.
+
+| URL | What | Weight |
+|---|---|---|
+| `/` | Landing page: what it is, how the pipeline works, why it is not an algorithm visualizer, what it does **not** do, the numbers, an FAQ | ~17 KB, zero JavaScript |
+| `/app` | The studio (unchanged, plus a mobile layout) | 216 KB JS, split into app + react chunks |
+| `/faq` | Ten questions with matching `FAQPage` structured data | zero JavaScript |
+| `/privacy`, `/terms` | Written from what the code does, not from a template | zero JavaScript |
+| `/404` | Real 404 status, `noindex`, links back | zero JavaScript |
+
+The static pages carry no JavaScript at all, and their CSS is inlined into the
+HTML at build time, so each is a single request that paints immediately. That
+matters more than usual here: a free instance sleeps, and the first visitor
+pays a cold start before any byte is served.
+
+**Generated, not maintained.** `robots.txt` and `sitemap.xml` are emitted by a
+Vite plugin from the same `PAGES` list that defines the build inputs, and the
+server's `ROUTES` table is asserted against the sitemap by `tools/check_site.py`.
+A page cannot be added to the build and forgotten in the sitemap, and the
+sitemap cannot advertise a URL that 404s.
+
+**What `tools/check_site.py` enforces**, against the real app and the real
+build, on every run:
+
+- every route returns 200, with a title and description, both unique
+- canonical URLs are absolute and point at *themselves* — a canonical that
+  points elsewhere silently hands your ranking to another page
+- exactly one `<h1>` per page and no skipped heading level
+- every `<img>` has an `alt` attribute
+- JSON-LD parses, and every `FAQPage` question is **visible on that page**
+  (Google treats declaring more than you show as a manual action)
+- no internal link 404s
+- `/app.html` and friends `301` to their clean URLs, so one page is not two
+- HTML revalidates and hashed assets are `immutable`
+- an unknown page returns a 404 status with a `noindex` HTML body, while an
+  unknown *API* path still returns JSON
+
+> The FAQ-visibility check was written wrong the first time and passed a
+> deliberately poisoned page: it matched questions against text that still
+> contained the JSON-LD block, so a question always "appeared". It is worth
+> recording that a check only counts once you have watched it fail.
+
+**Analytics and cookies.** The site sets no cookies, so it shows no cookie
+banner — a consent dialog for cookies that do not exist trains people to click
+through consent dialogs. `VITE_ANALYTICS_SRC` can enable a cookieless
+aggregate counter (Plausible/Umami-compatible) at build time; unset, which is
+the default, the pages contain no third-party request at all. Local storage is
+used for one thing, the panel sizes, and the privacy policy names the keys.
+
+**Accessibility.** Skip links on every page; the palette checked against WCAG
+AA (a separate `--border-control` token exists because the decorative border
+sits at 1.34:1, fine for a divider and not fine for the edge of a button);
+visible focus rings; icon buttons given real labels rather than a glyph; the
+graph and tree SVGs given `role="img"` and a description generated from the
+same state they draw; `prefers-reduced-motion` honoured.
+
+**Mobile.** The studio is four panels separated by draggable dividers, and a
+phone has no drag-a-divider gesture. Below 900 px it becomes one panel and a
+tab bar — same components, same state, different container — rather than a
+desktop layout shrunk until it merely fits.

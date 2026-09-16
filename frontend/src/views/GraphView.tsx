@@ -133,7 +133,20 @@ export function GraphView({ descriptor, allAnnotations, state }: ViewProps) {
 
   return (
     <div className="view graph-view">
-      <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} width="100%" preserveAspectRatio="xMidYMid meet">
+      {/* A diagram is an image to assistive technology, and an unlabelled one
+          is announced as nothing at all. The description is generated from
+          the same state that is drawn, so it cannot drift out of date. */}
+      <svg
+        viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
+        width="100%"
+        preserveAspectRatio="xMidYMid meet"
+        role="img"
+        aria-label={
+          `Graph of ${nodes.length} nodes and ${edges.length} edges. ` +
+          `${order.size} visited so far` +
+          (current ? `, currently at node ${current}` : "") + "."
+        }
+      >
         <defs>
           <marker id="gv-arrow" viewBox="0 0 10 10" refX="20" refY="5"
                   markerWidth="5" markerHeight="5" orient="auto-start-reverse">

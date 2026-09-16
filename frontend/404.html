@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>Page not found (404) | AlgoStudio</title>
+    <meta
+      name="description"
+      content="That page doesn't exist. It may have been a shared execution link that has since expired — recordings are deleted after fourteen days."
+    />
+    <!-- A 404 must never be indexed, and must never claim to be another page:
+         no canonical to "/", which would tell a crawler this IS the homepage. -->
+    <meta name="robots" content="noindex, follow" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#0d1117" />
+
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="alternate icon" href="/favicon.ico" sizes="48x48" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+
+    <link rel="stylesheet" href="/src/site.css" />
+    <!--ANALYTICS-->
+  </head>
+
+  <body>
+    <a class="skip" href="#main">Skip to main content</a>
+
+    <header class="site-head">
+      <div class="wrap">
+        <a class="brand" href="/">
+          <img src="/favicon.svg" width="26" height="26" alt="" />
+          Algo<span>Studio</span>
+        </a>
+        <nav class="site-nav" aria-label="Primary">
+          <a href="/#how">How it works</a>
+          <a href="/faq">FAQ</a>
+          <a href="https://github.com/bm-Shreyas05/algostudio" rel="noopener">GitHub</a>
+          <a href="/app">Open the Studio</a>
+        </nav>
+      </div>
+    </header>
+
+    <main id="main">
+      <div class="wrap notfound">
+        <p class="code" aria-hidden="true">404</p>
+        <h1>That page isn't here</h1>
+        <p>
+          If you followed a shared execution link, it has probably expired —
+          recordings are deleted automatically after fourteen days. Running the same
+          algorithm again produces the same recording, so nothing is really lost.
+        </p>
+        <div class="cta-row">
+          <a class="cta primary" href="/app">Open the Studio<span aria-hidden="true">→</span></a>
+          <a class="cta" href="/">Back to the overview</a>
+        </div>
+
+        <p style="margin-top: 42px; color: var(--muted)">
+          Or try
+          <a href="/faq" style="color: var(--accent)">the FAQ</a>,
+          <a href="/privacy" style="color: var(--accent)">the privacy policy</a>, or
+          <a href="https://github.com/bm-Shreyas05/algostudio" rel="noopener" style="color: var(--accent)">the source code</a>.
+        </p>
+      </div>
+    </main>
+
+    <footer class="site-foot">
+      <div class="wrap">
+        <div class="foot-bottom" style="border-top: 0; margin-top: 0">
+          <span>© %YEAR% AlgoStudio. Educational project.</span>
+          <span>No cookies. No accounts. No tracking.</span>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

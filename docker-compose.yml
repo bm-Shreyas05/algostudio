@@ -14,6 +14,8 @@ services:
       context: .
       dockerfile: backend/Dockerfile.api
       target: api-base          # no SPA in the image; the web service serves it
+      args:
+        INSTALL_DOCKER_CLI: "1"   # these stacks run ALGOSTUDIO_SANDBOX=docker
     environment:
       ALGOSTUDIO_SANDBOX: docker
       ALGOSTUDIO_DATA: /data

@@ -22,6 +22,8 @@ export interface SplitProps {
   minPx?: number;
   children: ReactNode;
   className?: string;
+  /** Landmark id, so a skip link has somewhere to land. */
+  id?: string;
 }
 
 function load(key: string, fallback: number[]): number[] {
@@ -43,7 +45,7 @@ function load(key: string, fallback: number[]): number[] {
 }
 
 export function Split({
-  direction, storageKey, initial, minPx = 90, children, className = "",
+  direction, storageKey, initial, minPx = 90, children, className = "", id,
 }: SplitProps) {
   const panes = Children.toArray(children);
   const [sizes, setSizes] = useState<number[]>(() => load(storageKey, initial));
@@ -120,6 +122,7 @@ export function Split({
   return (
     <div
       ref={containerRef}
+      id={id}
       className={`split split-${direction} ${className}`}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
@@ -168,6 +171,10 @@ export function PaneHead({
           className="pane-btn"
           onClick={onToggleCollapse}
           title={collapsed ? "expand" : "collapse"}
+          // The label cannot come from the glyph: a screen reader announces
+          // "▾" as nothing useful, or as "down pointing triangle".
+          aria-label={`${collapsed ? "Expand" : "Collapse"} the ${title} panel`}
+          aria-expanded={!collapsed}
         >
           {collapsed ? "▸" : "▾"}
         </button>
@@ -177,9 +184,13 @@ export function PaneHead({
       {extra}
       {onToggleMaximize && (
         <button
-          className="pane-btn"
+          className="pane-btn pane-maximize"
           onClick={onToggleMaximize}
           title={maximized ? "restore layout" : "maximize this panel"}
+          aria-label={
+            maximized ? "Restore the layout" : `Maximize the ${title} panel`
+          }
+          aria-pressed={Boolean(maximized)}
         >
           {maximized ? "🗗" : "⛶"}
         </button>

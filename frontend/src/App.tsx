@@ -11,6 +11,7 @@ import { SourceView } from "./components/SourceView";
 import { PaneHead, Split } from "./components/Split";
 import { Transport } from "./components/Transport";
 import { liveAnnotations } from "./engine/reducer";
+import { MOBILE_QUERY, useMediaQuery } from "./lib/useMediaQuery";
 import { useExecution } from "./store/useExecution";
 import { resolveView, VIEW_LABELS } from "./views/registry";
 import { CallTreeView } from "./views/TreeView";
@@ -26,6 +27,14 @@ type RightTab = "variables" | "callstack" | "calltree";
 type BottomTab = "timeline" | "console" | "analytics" | "ai";
 type PaneId = "source" | "canvas" | "inspector" | "bottom";
 
+/** Tab order on narrow screens: what you look at most, first. */
+const MOBILE_PANES: [PaneId, string][] = [
+  ["canvas", "Visual"],
+  ["source", "Code"],
+  ["inspector", "Data"],
+  ["bottom", "Timeline"],
+];
+
 export default function App() {
   const exec = useExecution();
   const [source, setSource] = useState(STARTER);
@@ -39,6 +48,11 @@ export default function App() {
   const [pinned, setPinned] = useState<Record<string, string>>({});
   const [health, setHealth] = useState<Record<string, any> | null>(null);
   const [maximized, setMaximized] = useState<PaneId | null>(null);
+  /* Below the breakpoint there are no dividers to drag, so the four panes
+     become one pane plus a tab bar. Same components, same state — only the
+     container changes. */
+  const isMobile = useMediaQuery(MOBILE_QUERY);
+  const [mobilePane, setMobilePane] = useState<PaneId>("canvas");
 
   useEffect(() => {
     api.algorithms().then((r) => setAlgorithms(r.algorithms)).catch(() => undefined);
@@ -221,10 +235,17 @@ export default function App() {
             <ul>
               <li>Views are chosen from the shape of the data at runtime — an
                   adjacency map becomes a graph, a list of numbers becomes an array.</li>
-              <li><kbd>←</kbd> <kbd>→</kbd> step, <kbd>space</kbd> plays,
-                  <kbd>Esc</kbd> restores a maximized panel.</li>
-              <li>Drag any divider to resize, or press <strong>⛶</strong> on a panel
-                  to give it the whole window.</li>
+              {isMobile ? (
+                <li>Use the tabs above to move between the visualization, the
+                    code, the data and the timeline.</li>
+              ) : (
+                <>
+                  <li><kbd>←</kbd> <kbd>→</kbd> step, <kbd>space</kbd> plays,
+                      <kbd>Esc</kbd> restores a maximized panel.</li>
+                  <li>Drag any divider to resize, or press <strong>⛶</strong> on a panel
+                      to give it the whole window.</li>
+                </>
+              )}
             </ul>
           </div>
         )}
@@ -347,10 +368,22 @@ export default function App() {
   return (
     <div className="app">
       {/* ------------------------------------------------------------ top */}
-      <header className="toolbar">
-        <div className="brand">Algo<span>Studio</span></div>
+      <a className="skip" href="#workspace">Skip to the workspace</a>
 
+      <header className="toolbar">
+        {/* The page needs exactly one h1, and on a tool the product name is
+            it. Wrapping a link means the studio has a way back to the site. */}
+        <h1 className="brand">
+          <a href="/" title="Back to the AlgoStudio overview">
+            Algo<span>Studio</span>
+          </a>
+        </h1>
+
+        <label className="visually-hidden" htmlFor="algorithm-select">
+          Algorithm
+        </label>
         <select
+          id="algorithm-select"
           value={selectedAlgorithm}
           onChange={(e) => loadAlgorithm(e.target.value)}
           title="Packaged algorithms run through exactly the same pipeline as your own code"
@@ -375,7 +408,11 @@ export default function App() {
             ))}
         </select>
 
-        <select value={granularity} onChange={(e) => setGranularity(e.target.value)}
+        <label className="visually-hidden" htmlFor="granularity-select">
+          Instrumentation granularity
+        </label>
+        <select id="granularity-select" value={granularity}
+                onChange={(e) => setGranularity(e.target.value)}
                 title="How finely execution is instrumented">
           <option value="minimal">minimal</option>
           <option value="standard">standard</option>
@@ -420,6 +457,14 @@ export default function App() {
               {curated ? `${health.sandbox_mode} · catalogue only` : health.sandbox_mode}
             </span>
           )}
+          {/* The studio is a dead end without these: it is served at its own
+              URL, so someone who lands here directly has no other route to
+              what the project is or what it stores. */}
+          <nav className="chrome-links" aria-label="Site">
+            <a href="/faq">FAQ</a>
+            <a href="/privacy">Privacy</a>
+            <a href="/terms">Terms</a>
+          </nav>
         </div>
       </header>
 
@@ -486,10 +531,37 @@ export default function App() {
       )}
 
       {/* ----------------------------------------------------------- body */}
-      {maximized ? (
-        <div className="workspace maximized">{PANES[maximized]}</div>
+      {isMobile ? (
+        <>
+          <div id="workspace" className="pane-tabs" role="tablist" aria-label="Panels">
+            {MOBILE_PANES.map(([id, label]) => (
+              <button
+                key={id}
+                role="tab"
+                id={`tab-${id}`}
+                aria-selected={mobilePane === id}
+                aria-controls={`panel-${id}`}
+                className={mobilePane === id ? "on" : ""}
+                onClick={() => setMobilePane(id)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <div
+            className="workspace mobile"
+            role="tabpanel"
+            id={`panel-${mobilePane}`}
+            aria-labelledby={`tab-${mobilePane}`}
+          >
+            {PANES[mobilePane]}
+          </div>
+        </>
+      ) : maximized ? (
+        <div id="workspace" className="workspace maximized">{PANES[maximized]}</div>
       ) : (
         <Split
+          id="workspace"
           direction="column"
           storageKey="algostudio.layout.v1.rows"
           initial={[64, 36]}

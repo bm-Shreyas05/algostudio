@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>The Studio — run and step through an algorithm | AlgoStudio</title>
+    <meta
+      name="description"
+      content="Pick one of 49 algorithms, watch it execute, and step forwards or backwards through every assignment, comparison and call it makes."
+    />
+    <link rel="canonical" href="%SITE_URL%/app" />
+    <meta name="robots" content="index, follow" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#0d1117" />
+
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="alternate icon" href="/favicon.ico" sizes="48x48" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="AlgoStudio" />
+    <meta property="og:url" content="%SITE_URL%/app" />
+    <meta property="og:title" content="The Studio — run and step through an algorithm" />
+    <meta
+      property="og:description"
+      content="49 algorithms, reverse stepping, and views inferred from the data's runtime shape."
+    />
+    <meta property="og:image" content="%SITE_URL%/og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta
+      property="og:image:alt"
+      content="AlgoStudio wordmark above the words: step backwards through a running program."
+    />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="The Studio — run and step through an algorithm" />
+    <meta
+      name="twitter:description"
+      content="49 algorithms, reverse stepping, and views inferred from the data's runtime shape."
+    />
+    <meta name="twitter:image" content="%SITE_URL%/og.png" />
+    <meta
+      name="twitter:image:alt"
+      content="AlgoStudio wordmark above the words: step backwards through a running program."
+    />
+
+    <!--ANALYTICS-->
+
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        "name": "AlgoStudio",
+        "url": "%SITE_URL%/app",
+        "applicationCategory": "DeveloperApplication",
+        "operatingSystem": "Any modern web browser",
+        "browserRequirements": "Requires JavaScript.",
+        "isAccessibleForFree": true,
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+        "isPartOf": { "@type": "WebSite", "@id": "%SITE_URL%/#website" }
+      }
+    </script>
+  </head>
+
+  <body>
+    <div id="root">
+      <!--
+        Shown until React mounts, and the whole page for anyone without
+        JavaScript. A tool that needs a runtime should say so in words rather
+        than presenting a blank rectangle.
+      -->
+      <noscript>
+        <div style="max-width: 34rem; margin: 12vh auto; padding: 0 24px; font: 16px/1.6 system-ui, sans-serif; color: #dbe3ec">
+          <h1 style="font-size: 1.6rem">The Studio needs JavaScript</h1>
+          <p style="color: #9aa7b4">
+            Stepping through a recorded execution happens entirely in your
+            browser, so this page cannot work without JavaScript enabled.
+          </p>
+          <p style="color: #9aa7b4">
+            Everything else on the site is plain HTML:
+            <a style="color: #4c9aff" href="/">what AlgoStudio is</a>,
+            the <a style="color: #4c9aff" href="/faq">FAQ</a>, and the
+            <a style="color: #4c9aff" href="https://github.com/bm-Shreyas05/algostudio">source code</a>.
+          </p>
+        </div>
+      </noscript>
+    </div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

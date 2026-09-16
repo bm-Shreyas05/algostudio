@@ -8,6 +8,9 @@
   --bg-3: #161d26;
   --panel: #11171e;
   --border: #232c38;
+  /* Decorative dividers use --border (1.34:1, deliberately quiet).
+     Anything you can click needs 3:1 against its background. */
+  --border-control: #5c6b80;
   --fg: #dbe3ec;
   --muted: #7d8996;
   --accent: #4c9aff;
@@ -603,3 +606,117 @@ kbd {
   font-family: ui-monospace, Consolas, monospace;
 }
 .scalar-tile .sk { font-size: 10px; color: var(--muted); }
+
+/* ===================================================================== */
+/* Production pass: accessibility, and a layout for screens that have no  */
+/* room for four panes and three draggable dividers.                     */
+/* ===================================================================== */
+
+/* The brand is the page's only h1 now, and a link back to the site. */
+h1.brand {
+  font-size: 14px; font-weight: 700; letter-spacing: 0.2px;
+  margin: 0 6px 0 0; line-height: 1;
+}
+h1.brand a { color: var(--fg); text-decoration: none; }
+h1.brand a:hover { color: var(--accent); }
+h1.brand a:hover span { color: var(--fg); }
+
+.skip {
+  position: absolute; left: -9999px;
+  background: var(--accent); color: #06121f;
+  padding: 9px 15px; font-weight: 600; border-radius: 0 0 6px 0;
+  z-index: 200; text-decoration: none;
+}
+.skip:focus { left: 0; top: 0; }
+
+.visually-hidden {
+  position: absolute; width: 1px; height: 1px;
+  padding: 0; margin: -1px; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+/* Keyboard focus must be visible against a dark ground. Relying on the UA
+   default here produced a ring that was invisible on --bg-3. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* WCAG 1.4.11: a control's boundary needs 3:1 against its surroundings.
+   --border sits at 1.34, which is right for a decorative divider and wrong
+   for the edge of a button. */
+button, select, input[type="text"], input:not([type]), textarea {
+  border-color: var(--border-control);
+}
+
+/* ----------------------------------------------------------- mobile tabs */
+.pane-tabs {
+  display: flex; flex: none; gap: 2px;
+  padding: 5px 8px;
+  background: var(--bg-2);
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+}
+.pane-tabs button {
+  flex: 1 1 auto;
+  min-height: 38px;          /* a comfortable touch target */
+  font-size: 13px;
+  white-space: nowrap;
+}
+.pane-tabs button.on {
+  background: var(--accent-current);
+  border-color: var(--accent);
+  color: var(--fg);
+}
+
+.workspace.mobile { flex: 1; min-height: 0; display: flex; }
+.workspace.mobile > .pane { flex: 1; min-width: 0; }
+
+@media (max-width: 900px) {
+  /* Panels are full-width now, so the maximize control has nothing to do. */
+  .pane-maximize { display: none; }
+
+  .toolbar { flex-wrap: wrap; gap: 6px; padding: 7px 10px; }
+  .toolbar select { max-width: 100%; flex: 1 1 150px; }
+  .toolbar .status { width: 100%; justify-content: flex-start; }
+
+  /* Touch targets. 38px is short of the 44px ideal but this is a dense tool
+     bar; below this it stops being reliably tappable at all. */
+  .toolbar button, .transport-bar button { min-height: 38px; padding: 6px 12px; }
+
+  .transport-bar { flex-wrap: wrap; row-gap: 8px; }
+  .transport-bar .scrub { flex: 1 1 100%; order: 10; }
+
+  .split-handle { display: none; }
+}
+
+@media (max-width: 560px) {
+  .pane-tabs button { font-size: 12px; padding: 2px 6px; }
+  .toolbar .brand { margin-right: 2px; }
+}
+
+/* Motion in this app carries information -- a pulsing node is the current
+   node. Honour the preference anyway: the colour still says it. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Small print links in the toolbar status area. */
+.chrome-links { display: flex; gap: 9px; align-items: center; }
+.chrome-links a {
+  color: var(--muted); text-decoration: none; font-size: 11px;
+  border-bottom: 1px solid transparent;
+}
+.chrome-links a:hover { color: var(--accent); border-bottom-color: var(--accent); }
+
+@media (max-width: 660px) {
+  /* Reclaim a toolbar row. The links stay in the DOM -- so they are still
+     crawled and still reachable by a screen reader's link list -- they just
+     stop costing 8% of a phone screen. */
+  .chrome-links { display: none; }
+}

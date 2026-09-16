@@ -1,0 +1,300 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>Privacy Policy — no cookies, no accounts | AlgoStudio</title>
+    <meta
+      name="description"
+      content="AlgoStudio sets no cookies, has no accounts and runs no tracking scripts. This policy lists exactly what is stored, where, why, and when it is deleted."
+    />
+    <link rel="canonical" href="%SITE_URL%/privacy" />
+    <meta name="robots" content="index, follow" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#0d1117" />
+
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="alternate icon" href="/favicon.ico" sizes="48x48" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+
+    <meta property="og:type" content="article" />
+    <meta property="og:site_name" content="AlgoStudio" />
+    <meta property="og:url" content="%SITE_URL%/privacy" />
+    <meta property="og:title" content="Privacy Policy — what AlgoStudio stores, and for how long" />
+    <meta
+      property="og:description"
+      content="No cookies, no accounts, no tracking scripts. Exactly what is stored, where, why, and when it is deleted."
+    />
+    <meta property="og:image" content="%SITE_URL%/og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta
+      property="og:image:alt"
+      content="AlgoStudio wordmark above the words: step backwards through a running program."
+    />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:image" content="%SITE_URL%/og.png" />
+    <meta
+      name="twitter:image:alt"
+      content="AlgoStudio wordmark above the words: step backwards through a running program."
+    />
+
+    <link rel="stylesheet" href="/src/site.css" />
+    <!--ANALYTICS-->
+
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "BreadcrumbList",
+            "itemListElement": [
+              { "@type": "ListItem", "position": 1, "name": "Home", "item": "%SITE_URL%/" },
+              { "@type": "ListItem", "position": 2, "name": "Privacy Policy", "item": "%SITE_URL%/privacy" }
+            ]
+          },
+          {
+            "@type": "WebPage",
+            "name": "Privacy Policy",
+            "url": "%SITE_URL%/privacy",
+            "isPartOf": { "@type": "WebSite", "@id": "%SITE_URL%/#website" },
+            "description": "What AlgoStudio stores, where, why, and when it is deleted."
+          }
+        ]
+      }
+    </script>
+  </head>
+
+  <body>
+    <a class="skip" href="#main">Skip to main content</a>
+
+    <header class="site-head">
+      <div class="wrap">
+        <a class="brand" href="/">
+          <img src="/favicon.svg" width="26" height="26" alt="" />
+          Algo<span>Studio</span>
+        </a>
+        <nav class="site-nav" aria-label="Primary">
+          <a href="/#how">How it works</a>
+          <a href="/faq">FAQ</a>
+          <a href="https://github.com/bm-Shreyas05/algostudio" rel="noopener">GitHub</a>
+          <a href="/app">Open the Studio</a>
+        </nav>
+      </div>
+    </header>
+
+    <main id="main">
+      <div class="wrap prose">
+        <nav aria-label="Breadcrumb" class="updated" style="margin-bottom: 18px">
+          <a href="/" style="color: inherit">Home</a> &rsaquo; Privacy Policy
+        </nav>
+
+        <h1>Privacy Policy</h1>
+        <p class="updated">Last updated 16 September 2026</p>
+
+        <div class="callout">
+          <p>
+            <strong>The short version.</strong> AlgoStudio sets no cookies, has no
+            accounts, and loads no advertising or cross-site tracking scripts. It
+            stores the recordings of algorithm runs for fourteen days and then
+            deletes them. Nothing you do here is sold, shared or profiled.
+          </p>
+        </div>
+
+        <h2 id="who">Who runs this</h2>
+        <p>
+          AlgoStudio is a final-year engineering project, operated by its author as
+          a free educational demonstration. It is not a company and not a commercial
+          service. Questions about this policy go to
+          <a href="https://github.com/bm-Shreyas05/algostudio/issues" rel="noopener">the project's issue tracker</a>,
+          which is public.
+        </p>
+
+        <h2 id="no-cookies">Cookies</h2>
+        <p>
+          This site sets <strong>no cookies</strong> — not for analytics, not for
+          preferences, not for anything. That is why you have not been shown a cookie
+          banner: there is nothing to consent to, and a banner asking permission for
+          cookies that do not exist would be theatre.
+        </p>
+        <p>
+          The site does use your browser's <strong>local storage</strong> for one
+          purpose: remembering the sizes of the panels you have dragged, under the
+          keys <code>algostudio.layout.v1.rows</code> and
+          <code>algostudio.layout.v1.cols</code>. This data is written by your
+          browser, stays on your device, is never transmitted to the server, and
+          disappears when you clear site data.
+        </p>
+
+        <h2 id="what-we-store">What the server stores</h2>
+        <table>
+          <caption class="visually-hidden">
+            Data stored by the AlgoStudio server, why, and for how long
+          </caption>
+          <thead>
+            <tr><th scope="col">What</th><th scope="col">Why</th><th scope="col">Kept for</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>An <strong>execution recording</strong>: which algorithm was run, its
+                  inputs, the resulting event stream, timings and status</td>
+              <td>It is the thing you are stepping through. Re-used if the same
+                  algorithm is run again, so a repeated demo costs one execution.</td>
+              <td>14 days, then deleted automatically</td>
+            </tr>
+            <tr>
+              <td>A <strong>shared session</strong>: a random token plus the interface
+                  state, created only if you explicitly share a run</td>
+              <td>So a link you send reopens at the same step</td>
+              <td>Deleted with its recording</td>
+            </tr>
+            <tr>
+              <td>Your <strong>IP address</strong>, held in memory only</td>
+              <td>Rate limiting, so one visitor cannot exhaust a free server</td>
+              <td>60 seconds, in memory, never written to a database</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <p>
+          There is no account system, so none of the above is linked to an identity.
+          No name, email address, or device fingerprint is collected or derived.
+        </p>
+
+        <h3>Code you write</h3>
+        <p>
+          On this public deployment the code editor is disabled and the server
+          refuses source it did not ship with, so <strong>no code of yours is
+          submitted or stored here</strong>. If you run AlgoStudio yourself with the
+          editor enabled, the source you submit is stored in that installation's own
+          database as part of the recording, under your control, on your machine.
+        </p>
+
+        <h2 id="logs">Server logs and hosting</h2>
+        <p>
+          This site is hosted on a third-party platform. Like every web server, it
+          produces request logs that include IP addresses, timestamps, requested
+          paths and user-agent strings. These are generated by the hosting platform
+          and the web server, retained on the platform's own schedule, and used only
+          for diagnosing faults and abuse. They are not analysed, combined with other
+          data, or used to build any profile of you.
+        </p>
+
+        <h2 id="analytics">Analytics</h2>
+        <p>
+          This deployment runs <strong>no analytics</strong> by default, and none is
+          enabled unless the operator explicitly configures one. If analytics is ever
+          switched on, it will be a cookieless aggregate counter — page-level counts
+          with no cookies, no cross-site identifiers and no personal data — and this
+          section will say which provider and link to their policy before it is
+          enabled. Third-party advertising and behavioural tracking will not be added.
+        </p>
+
+        <h2 id="ai">The AI tutor</h2>
+        <p>
+          The explanation panel works in two ways. Its default is a template
+          explainer that is built from the recorded event stream and runs entirely on
+          this server, sending nothing anywhere. If an operator supplies an API key,
+          questions and the relevant slice of the execution are sent to that language
+          model provider to compose an answer.
+        </p>
+        <p>
+          <strong>On this deployment, no API key is configured</strong>, so the
+          template explainer is what you get and no request leaves this server.
+        </p>
+
+        <h2 id="sharing">What is never done</h2>
+        <ul>
+          <li>Your data is not sold, rented, or shared with advertisers.</li>
+          <li>No behavioural profile, audience segment or fingerprint is built.</li>
+          <li>There are no third-party social, advertising, or session-replay scripts.</li>
+          <li>Nothing you do here is used to train a machine-learning model.</li>
+        </ul>
+
+        <h2 id="rights">Your choices</h2>
+        <p>
+          Because there are no accounts, the controls are direct ones:
+        </p>
+        <ul>
+          <li>
+            <strong>Delete a recording now</strong> — recordings are removed
+            automatically after fourteen days, and you can ask for a specific one to
+            be deleted sooner by opening an issue with its execution id.
+          </li>
+          <li>
+            <strong>Clear local preferences</strong> — clearing site data in your
+            browser removes the stored panel sizes. Nothing on the server refers to
+            them.
+          </li>
+          <li>
+            <strong>Run it yourself</strong> — the whole project is open source. Run
+            it on your own machine and no data reaches anyone else at all.
+          </li>
+        </ul>
+        <p>
+          If you are in a jurisdiction granting rights of access, correction or
+          erasure, they apply to the limited data described above; ask through the
+          issue tracker and include the execution id concerned.
+        </p>
+
+        <h2 id="children">Children</h2>
+        <p>
+          The site is an educational programming tool suitable for general audiences.
+          It does not knowingly collect personal information from anyone, of any age,
+          because it does not collect personal information at all.
+        </p>
+
+        <h2 id="changes">Changes to this policy</h2>
+        <p>
+          If what is stored changes, this page changes with it and the date at the
+          top is updated. Because the site is open source, the full history of this
+          page is visible in the
+          <a href="https://github.com/bm-Shreyas05/algostudio" rel="noopener">repository</a>.
+        </p>
+
+        <div class="cta-row" style="margin-top: 40px">
+          <a class="cta primary" href="/app">Open the Studio<span aria-hidden="true">→</span></a>
+          <a class="cta" href="/terms">Read the terms</a>
+        </div>
+      </div>
+    </main>
+
+    <footer class="site-foot">
+      <div class="wrap">
+        <div class="foot-grid">
+          <div>
+            <h2>AlgoStudio</h2>
+            <p class="foot-note">
+              A universal event-driven program execution and visualization platform,
+              built as a final-year engineering project.
+            </p>
+          </div>
+          <nav aria-label="Product">
+            <h2>Product</h2>
+            <ul>
+              <li><a href="/app">Open the Studio</a></li>
+              <li><a href="/#how">How it works</a></li>
+              <li><a href="/#inside">What's inside</a></li>
+              <li><a href="/faq">FAQ</a></li>
+            </ul>
+          </nav>
+          <nav aria-label="Project and legal">
+            <h2>Project</h2>
+            <ul>
+              <li><a href="https://github.com/bm-Shreyas05/algostudio" rel="noopener">Source on GitHub</a></li>
+              <li><a href="https://github.com/bm-Shreyas05/algostudio/issues" rel="noopener">Report an issue</a></li>
+              <li><a href="/privacy" aria-current="page">Privacy</a></li>
+              <li><a href="/terms">Terms</a></li>
+            </ul>
+          </nav>
+        </div>
+        <div class="foot-bottom">
+          <span>© %YEAR% AlgoStudio. Educational project.</span>
+          <span>No cookies. No accounts. No tracking.</span>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

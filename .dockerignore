@@ -1,0 +1,50 @@
+# Without this the build context is the whole repository, which means uploading
+# frontend/node_modules (hundreds of megabytes) and var/ (local execution
+# recordings) to the build host on every deploy -- slow at best, and on a free
+# tier a build that times out.
+
+# Dependencies and build output: both are produced inside the image.
+frontend/node_modules/
+frontend/dist/
+**/node_modules/
+*.tsbuildinfo
+
+# Local execution recordings and the metadata database.
+var/
+*.db
+*.db-wal
+*.db-shm
+
+# Python bytecode and tool caches.
+**/__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Secrets must never enter an image layer, even transiently.
+.env
+.env.*
+!.env.example
+
+# History, design docs and editor state contribute nothing to a running
+# container.
+#
+# Deliberately NOT excluding *.md: every algorithm plugin ships an explain.md
+# beside its source, and the registry loads it. A recursive markdown exclusion
+# would strip 49 of them and the failure would only surface as empty
+# explanation panels at runtime.
+.git/
+.github/
+.vscode/
+.idea/
+.claude/
+docs/
+deploy/
+
+# Other deployment descriptors.
+docker-compose*.yml
+Makefile

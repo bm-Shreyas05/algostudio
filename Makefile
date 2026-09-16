@@ -1,4 +1,4 @@
-.PHONY: api web build check audit test fixtures runtime-image api-image preflight gc up down clean
+.PHONY: api web build check audit check-site test fixtures runtime-image api-image preflight gc up down clean
 
 api:
 	cd backend && python -m uvicorn algostudio.api.app:app --port 8000 --reload
@@ -21,6 +21,11 @@ check:
 audit:
 	cd backend && python tools/audit_views.py
 
+# Meta tags, canonical URLs, headings, alt text, structured data, internal
+# links, redirects and cache headers -- against the real build.
+check-site: build
+	cd backend && python tools/check_site.py
+
 test:
 	cd backend && python -m pytest tests -q
 
@@ -35,8 +40,11 @@ preflight:
 runtime-image:
 	docker build -f backend/Dockerfile.runtime -t algostudio-runtime:latest backend
 
+# INSTALL_DOCKER_CLI=1 because a local image is for the full-mode stack.
+# SITE_URL matters: canonical tags and the sitemap are baked in at build time.
+SITE_URL ?= http://localhost:8000
 api-image:
-	docker build -f backend/Dockerfile.api -t algostudio-api:latest .
+	docker build -f backend/Dockerfile.api -t algostudio-api:latest --build-arg INSTALL_DOCKER_CLI=1 --build-arg VITE_SITE_URL=$(SITE_URL) .
 
 # The deployable stack: API + built SPA in one container. Needs a .env
 # (start from .env.example) and the runtime image for the sandbox.

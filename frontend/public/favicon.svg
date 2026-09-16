@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="AlgoStudio">
+  <title>AlgoStudio</title>
+  <rect width="64" height="64" rx="14" fill="#0d1117"/>
+  <rect x="12" y="16" width="34" height="7" rx="3.5" fill="#4c9aff"/>
+  <rect x="12" y="28.5" width="22" height="7" rx="3.5" fill="#4aa06b"/>
+  <rect x="12" y="41" width="28" height="7" rx="3.5" fill="#d9a441"/>
+  <rect x="50" y="10" width="3" height="44" rx="1.5" fill="#dbe3ec"/>
+</svg>

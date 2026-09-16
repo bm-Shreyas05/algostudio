@@ -1,0 +1,83 @@
+# Render blueprint — the curated public deployment.
+#
+# Render's free tier cannot nest containers, so there is no per-execution
+# Docker sandbox available here. That decides the posture rather than the
+# other way round: ALGOSTUDIO_ALLOW_ARBITRARY_CODE=0, the editor is disabled,
+# and the 49 bundled algorithms are what runs. See docs/20-deployment.md §C.
+#
+# Running visitor-written code needs docker-compose.prod.yml on a host whose
+# Docker daemon you control. Do not "fix" this by flipping the flag below.
+#
+# To deploy: Render dashboard -> New -> Blueprint -> pick this repository.
+# Render reads this file, builds the Dockerfile and publishes the service.
+
+services:
+  - type: web
+    name: algostudio
+    runtime: docker
+    plan: free
+    region: oregon
+    branch: main
+    dockerfilePath: ./backend/Dockerfile.api
+    dockerContext: .
+    # The last stage of the multi-stage build is `api`: backend plus the built
+    # SPA, served from one origin by api/app.py::_mount_frontend.
+
+    # Render restarts the instance if this stops returning 200. It also reports
+    # deployment warnings, so a misconfigured deploy is visible from outside.
+    healthCheckPath: /api/v1/health
+
+    envVars:
+      # ---- posture -----------------------------------------------------
+      # 0 = curated: POST /executions and /analyze return 403, the catalogue
+      # still runs, and the SPA reads this from /health and hides its editor.
+      - key: ALGOSTUDIO_ALLOW_ARBITRARY_CODE
+        value: "0"
+      # No Docker daemon is reachable from here; with arbitrary code disabled
+      # there is nothing untrusted to isolate.
+      - key: ALGOSTUDIO_SANDBOX
+        value: subprocess
+
+      # ---- serving -----------------------------------------------------
+      # The SPA is same-origin with the API, so no browser needs a CORS grant
+      # and none is issued.
+      - key: ALGOSTUDIO_CORS_ORIGINS
+        value: none
+
+      # ---- state -------------------------------------------------------
+      # The free tier has no persistent disk: /data is wiped on every restart.
+      # That is survivable precisely because recordings are regenerable —
+      # re-running an algorithm reproduces its recording byte for byte. The
+      # only visible effect is that the first run after a restart is not cached
+      # and an old share link 404s, which is already documented behaviour.
+      - key: ALGOSTUDIO_DATA
+        value: /data
+      - key: ALGOSTUDIO_RETENTION_DAYS
+        value: "14"
+
+      # ---- budgets -----------------------------------------------------
+      # Tighter than the local defaults. A free instance has 0.1 CPU and
+      # 512 MB, shared with every other visitor, so one runaway program must
+      # not be able to make the site unavailable for everyone else.
+      - key: ALGOSTUDIO_MAX_SECONDS
+        value: "8"
+      - key: ALGOSTUDIO_MAX_EVENTS
+        value: "120000"
+      - key: ALGOSTUDIO_MAX_MEMORY_MB
+        value: "192"
+      - key: ALGOSTUDIO_CONCURRENCY
+        value: "2"
+      - key: ALGOSTUDIO_RATE_RUNS
+        value: "20"
+
+      # ---- AI ----------------------------------------------------------
+      # No key is set, so the tutor uses the template explainer, which is built
+      # from the recorded event stream and makes no network request. The panel
+      # is fully functional that way — that fallback is a design property, not
+      # a degraded mode. Adding ANTHROPIC_API_KEY here would switch it to the
+      # model, and the privacy policy would need updating to say so.
+      - key: ALGOSTUDIO_AI
+        value: "1"
+
+      - key: PYTHONUNBUFFERED
+        value: "1"

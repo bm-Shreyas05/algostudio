@@ -1,0 +1,389 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>FAQ — how AlgoStudio works, and what it can't do | AlgoStudio</title>
+    <meta
+      name="description"
+      content="How reverse stepping works, which Python features are supported, and why the public site will not run code you write yourself."
+    />
+    <link rel="canonical" href="%SITE_URL%/faq" />
+    <meta name="robots" content="index, follow" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#0d1117" />
+
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="alternate icon" href="/favicon.ico" sizes="48x48" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="AlgoStudio" />
+    <meta property="og:url" content="%SITE_URL%/faq" />
+    <meta property="og:title" content="FAQ — how AlgoStudio works, and what it can't do" />
+    <meta
+      property="og:description"
+      content="How reverse stepping works, which Python features are supported, and why the public site runs bundled algorithms only."
+    />
+    <meta property="og:image" content="%SITE_URL%/og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta
+      property="og:image:alt"
+      content="AlgoStudio wordmark above the words: step backwards through a running program."
+    />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:image" content="%SITE_URL%/og.png" />
+    <meta
+      name="twitter:image:alt"
+      content="AlgoStudio wordmark above the words: step backwards through a running program."
+    />
+
+    <link rel="stylesheet" href="/src/site.css" />
+    <!--ANALYTICS-->
+
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "BreadcrumbList",
+            "itemListElement": [
+              { "@type": "ListItem", "position": 1, "name": "Home", "item": "%SITE_URL%/" },
+              { "@type": "ListItem", "position": 2, "name": "FAQ", "item": "%SITE_URL%/faq" }
+            ]
+          },
+          {
+            "@type": "FAQPage",
+            "@id": "%SITE_URL%/faq#faq",
+            "isPartOf": { "@type": "WebSite", "@id": "%SITE_URL%/#website" },
+            "mainEntity": [
+              {
+                "@type": "Question",
+                "name": "Is AlgoStudio an algorithm visualizer?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "No. An algorithm visualizer contains one hand-written animation per algorithm. AlgoStudio contains none. It instruments the source it is given, records what actually happened as a stream of typed events, and chooses a view by inspecting the shape of the data at runtime. Adding an algorithm means adding a directory of data; no drawing code is written and the visualization engine is not modified."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "How can it step backwards without re-running the program?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Every event that mutates state carries the old value beside the new one, so stepping back is a single inverse substitution in constant time. Jumping to an arbitrary step restores the nearest checkpoint and replays a bounded number of events forward, which keeps seeking proportional to the checkpoint interval rather than to the length of the run."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Which Python features does it support?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Variables, arithmetic and comparison, if/elif/else, while, for over ranges and containers, break and continue, functions with defaults and *args and **kwargs, recursion, lists, tuples, dicts, sets, strings, subscripts and slices, list and dict methods, try/except/finally, raise, and classes with attributes and methods. Multiple inheritance, metaclasses, async, generators used as coroutines and most of the standard library sit outside the tested boundary. The app reports what it could not handle before running rather than failing part way through."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Why can't I run my own code on the public site?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Executing source typed by a stranger safely requires a container sandbox for each execution, and the free hosting tier cannot nest containers. In-process restrictions such as an import allowlist are defense in depth and are not a security boundary, because CPython cannot be sandboxed inside its own process. Rather than pretend otherwise, the public deployment runs the 49 bundled algorithms only and disables the editor. Running the project locally, or on a host with Docker, enables it."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Does AlgoStudio use cookies or track visitors?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "It sets no cookies at all. Panel sizes and similar interface preferences are stored in your browser's local storage and never leave your device. There are no accounts, no advertising and no cross-site tracking scripts."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "How does it know to draw a graph rather than a list?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Shape detectors examine the runtime value. A dictionary whose values are lists containing that dictionary's own keys is adjacency-shaped, so it is drawn as a graph. A list of numbers becomes an array with pointer markers. Candidate shapes are scored and the strongest wins. No detector is permitted to look at the name of the function or the algorithm."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Are the complexity curves real measurements or lookups?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Measurements. The benchmark runs an algorithm at several input sizes, counts the statements actually executed, and fits growth curves to those counts. Merge sort recovers an n log n fit and bubble sort an n squared fit from the measured data, not from a table of known answers."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Is the source code available?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Yes. The engine, the frontend, and twenty-one design documents covering the event model, the sandbox threat model, the plugin architecture, the testing strategy and the evaluation protocol are public on GitHub."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Can it visualize languages other than Python?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Only Python is implemented today, but the architecture places all language knowledge in one layer. Everything downstream of the event stream, including the state reducer, the shape detectors and every view, is language agnostic. Adding a language means writing a frontend that emits the same events, not rewriting the visualization engine."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "How long are my executions kept?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Recordings expire after fourteen days and are swept automatically. They are also regenerable, because running the same algorithm again reproduces the same recording, so an expired share link simply returns a not found response."
+                }
+              }
+            ]
+          }
+        ]
+      }
+    </script>
+  </head>
+
+  <body>
+    <a class="skip" href="#main">Skip to main content</a>
+
+    <header class="site-head">
+      <div class="wrap">
+        <a class="brand" href="/">
+          <img src="/favicon.svg" width="26" height="26" alt="" />
+          Algo<span>Studio</span>
+        </a>
+        <nav class="site-nav" aria-label="Primary">
+          <a href="/#how">How it works</a>
+          <a href="/#inside">What's inside</a>
+          <a href="/faq" aria-current="page">FAQ</a>
+          <a href="https://github.com/bm-Shreyas05/algostudio" rel="noopener">GitHub</a>
+          <a href="/app">Open the Studio</a>
+        </nav>
+      </div>
+    </header>
+
+    <main id="main">
+      <div class="wrap prose" style="max-width: 52rem">
+        <nav aria-label="Breadcrumb" class="updated" style="margin-bottom: 18px">
+          <a href="/" style="color: inherit">Home</a> &rsaquo; FAQ
+        </nav>
+
+        <h1>Frequently asked questions</h1>
+        <p class="updated">
+          If something here is wrong or missing,
+          <a href="https://github.com/bm-Shreyas05/algostudio/issues" rel="noopener">open an issue</a>.
+        </p>
+
+        <h2 id="engine">The engine</h2>
+        <div class="faq">
+          <details open>
+            <summary>Is AlgoStudio an algorithm visualizer?</summary>
+            <div>
+              <p>
+                No. An algorithm visualizer contains one hand-written animation per
+                algorithm. AlgoStudio contains none. It instruments the source it is
+                given, records what actually happened as a stream of typed events,
+                and chooses a view by inspecting the shape of the data at runtime.
+              </p>
+              <p>
+                Adding an algorithm means adding a directory of data. No drawing code
+                is written, and the visualization engine is not modified — that
+                property is enforced by a test, not by convention.
+              </p>
+            </div>
+          </details>
+
+          <details>
+            <summary>How can it step backwards without re-running the program?</summary>
+            <div>
+              <p>
+                Every event that mutates state carries the old value beside the new
+                one, so stepping back is a single inverse substitution in constant
+                time. Jumping to an arbitrary step restores the nearest checkpoint and
+                replays a bounded number of events forward, which keeps seeking
+                proportional to the checkpoint interval rather than to the length of
+                the run.
+              </p>
+            </div>
+          </details>
+
+          <details>
+            <summary>How does it know to draw a graph rather than a list?</summary>
+            <div>
+              <p>
+                Shape detectors examine the runtime value. A dictionary whose values
+                are lists containing that dictionary's own keys is adjacency-shaped,
+                so it is drawn as a graph. A list of numbers becomes an array with
+                pointer markers. Candidate shapes are scored and the strongest wins.
+              </p>
+              <p>
+                No detector is permitted to look at the name of the function or the
+                algorithm — that restriction is the whole point, because a detector
+                that recognises <code>dijkstra</code> is just a hard-coded
+                visualizer wearing a disguise.
+              </p>
+            </div>
+          </details>
+
+          <details>
+            <summary>Are the complexity curves real measurements or lookups?</summary>
+            <div>
+              <p>
+                Measurements. The benchmark runs an algorithm at several input sizes,
+                counts the statements actually executed, and fits growth curves to
+                those counts. Merge sort recovers an <code>n log n</code> fit and
+                bubble sort an <code>n²</code> fit from the measured data, not from a
+                table of known answers.
+              </p>
+            </div>
+          </details>
+        </div>
+
+        <h2 id="limits">Scope and limits</h2>
+        <div class="faq">
+          <details>
+            <summary>Which Python features does it support?</summary>
+            <div>
+              <p>
+                Variables, arithmetic and comparison, <code>if</code>/<code>elif</code>/<code>else</code>,
+                <code>while</code>, <code>for</code> over ranges and containers,
+                <code>break</code> and <code>continue</code>, functions with defaults
+                and <code>*args</code>/<code>**kwargs</code>, recursion, lists, tuples,
+                dicts, sets, strings, subscripts and slices, list and dict methods,
+                <code>try</code>/<code>except</code>/<code>finally</code>,
+                <code>raise</code>, and classes with attributes and methods.
+              </p>
+              <p>
+                Multiple inheritance, metaclasses, <code>async</code>, generators used
+                as coroutines and most of the standard library sit outside the tested
+                boundary. The app reports what it could not handle
+                <em>before</em> running, rather than failing part way through.
+              </p>
+            </div>
+          </details>
+
+          <details>
+            <summary>Why can't I run my own code on the public site?</summary>
+            <div>
+              <p>
+                Executing source typed by a stranger safely requires a container
+                sandbox for each execution, and the free hosting tier cannot nest
+                containers. In-process restrictions such as an import allowlist are
+                defense in depth and are <em>not</em> a security boundary, because
+                CPython cannot be sandboxed inside its own process.
+              </p>
+              <p>
+                Rather than pretend otherwise, the public deployment runs the 49
+                bundled algorithms only and disables the editor. Running the project
+                locally, or on a host with Docker, enables it — the
+                <a href="https://github.com/bm-Shreyas05/algostudio#quick-start" rel="noopener">README</a>
+                has the two commands.
+              </p>
+            </div>
+          </details>
+
+          <details>
+            <summary>Can it visualize languages other than Python?</summary>
+            <div>
+              <p>
+                Only Python is implemented today, but the architecture places all
+                language knowledge in one layer. Everything downstream of the event
+                stream — the state reducer, the shape detectors and every view — is
+                language agnostic. Adding a language means writing a frontend that
+                emits the same events, not rewriting the visualization engine.
+              </p>
+            </div>
+          </details>
+        </div>
+
+        <h2 id="privacy">Privacy and data</h2>
+        <div class="faq">
+          <details>
+            <summary>Does AlgoStudio use cookies or track visitors?</summary>
+            <div>
+              <p>
+                It sets no cookies at all. Panel sizes and similar interface
+                preferences are stored in your browser's local storage and never leave
+                your device. There are no accounts, no advertising and no cross-site
+                tracking scripts. The <a href="/privacy">privacy policy</a> is the
+                long version.
+              </p>
+            </div>
+          </details>
+
+          <details>
+            <summary>How long are my executions kept?</summary>
+            <div>
+              <p>
+                Recordings expire after fourteen days and are swept automatically.
+                They are also regenerable — running the same algorithm again
+                reproduces the same recording — so an expired share link simply
+                returns a not-found response.
+              </p>
+            </div>
+          </details>
+        </div>
+
+        <h2 id="project">The project</h2>
+        <div class="faq">
+          <details>
+            <summary>Is the source code available?</summary>
+            <div>
+              <p>
+                Yes. The engine, the frontend, and twenty-one design documents
+                covering the event model, the sandbox threat model, the plugin
+                architecture, the testing strategy and the evaluation protocol are
+                <a href="https://github.com/bm-Shreyas05/algostudio" rel="noopener">public on GitHub</a>.
+              </p>
+            </div>
+          </details>
+        </div>
+
+        <div class="cta-row" style="margin-top: 40px">
+          <a class="cta primary" href="/app">Open the Studio<span aria-hidden="true">→</span></a>
+          <a class="cta" href="/">Back to the overview</a>
+        </div>
+      </div>
+    </main>
+
+    <footer class="site-foot">
+      <div class="wrap">
+        <div class="foot-grid">
+          <div>
+            <h2>AlgoStudio</h2>
+            <p class="foot-note">
+              A universal event-driven program execution and visualization platform,
+              built as a final-year engineering project.
+            </p>
+          </div>
+          <nav aria-label="Product">
+            <h2>Product</h2>
+            <ul>
+              <li><a href="/app">Open the Studio</a></li>
+              <li><a href="/#how">How it works</a></li>
+              <li><a href="/#inside">What's inside</a></li>
+              <li><a href="/faq">FAQ</a></li>
+            </ul>
+          </nav>
+          <nav aria-label="Project and legal">
+            <h2>Project</h2>
+            <ul>
+              <li><a href="https://github.com/bm-Shreyas05/algostudio" rel="noopener">Source on GitHub</a></li>
+              <li><a href="https://github.com/bm-Shreyas05/algostudio/issues" rel="noopener">Report an issue</a></li>
+              <li><a href="/privacy">Privacy</a></li>
+              <li><a href="/terms">Terms</a></li>
+            </ul>
+          </nav>
+        </div>
+        <div class="foot-bottom">
+          <span>© %YEAR% AlgoStudio. Educational project.</span>
+          <span>No cookies. No accounts. No tracking.</span>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

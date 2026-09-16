@@ -1,0 +1,261 @@
+/* AlgoStudio — the static pages (landing, privacy, terms, FAQ, 404).
+ *
+ * Deliberately separate from styles.css, which is IDE chrome for a tool that
+ * assumes a big screen. These pages are read, not operated: they are
+ * mobile-first, they carry no JavaScript, and they are inlined into each HTML
+ * file at build time so first paint costs exactly one request.
+ */
+
+:root {
+  --bg: #0d1117;
+  --bg-2: #12181f;
+  --bg-3: #161d26;
+  --border: #232c38;
+  /* Interactive boundaries need 3:1 against their background (WCAG 1.4.11).
+     --border is decorative and sits at 1.34, which is fine for a divider and
+     not fine for the edge of a button. */
+  --border-control: #5c6b80;
+  --fg: #dbe3ec;
+  --muted: #9aa7b4;
+  --accent: #4c9aff;
+  --green: #4aa06b;
+  --amber: #d9a441;
+  --purple: #b07bd9;
+  --max: 68rem;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 16px/1.65 "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+  overflow-wrap: break-word;
+}
+
+code, pre, .mono {
+  font-family: "JetBrains Mono", "Cascadia Code", ui-monospace, Consolas, monospace;
+}
+
+/* Every interactive element gets a focus ring that is visible against the
+   dark ground. Removing outlines without replacing them is the single most
+   common keyboard-accessibility failure. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+.skip {
+  position: absolute; left: -9999px;
+  background: var(--accent); color: #06121f;
+  padding: 10px 16px; font-weight: 600; border-radius: 0 0 6px 0; z-index: 100;
+}
+.skip:focus { left: 0; top: 0; }
+
+.wrap { width: 100%; max-width: var(--max); margin: 0 auto; padding: 0 20px; }
+
+/* ------------------------------------------------------------------ header */
+.site-head {
+  position: sticky; top: 0; z-index: 20;
+  background: rgba(13, 17, 23, 0.92);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--border);
+}
+.site-head .wrap {
+  display: flex; align-items: center; gap: 16px;
+  min-height: 58px; flex-wrap: wrap;
+}
+.brand {
+  display: flex; align-items: center; gap: 9px;
+  font-weight: 700; font-size: 17px; letter-spacing: -0.2px;
+  color: var(--fg); text-decoration: none;
+}
+.brand img { width: 26px; height: 26px; display: block; }
+.brand span { color: var(--accent); }
+.site-nav { display: flex; align-items: center; gap: 4px; margin-left: auto; flex-wrap: wrap; }
+.site-nav a {
+  color: var(--muted); text-decoration: none;
+  padding: 7px 11px; border-radius: 6px; font-size: 14.5px;
+}
+.site-nav a:hover { color: var(--fg); background: var(--bg-3); }
+.site-nav a[aria-current="page"] { color: var(--fg); background: var(--bg-3); }
+
+/* -------------------------------------------------------------------- CTA */
+.cta {
+  display: inline-flex; align-items: center; gap: 9px;
+  padding: 12px 22px; border-radius: 8px;
+  font-weight: 600; font-size: 16px; text-decoration: none;
+  border: 1px solid var(--border-control);
+  background: var(--bg-3); color: var(--fg);
+  transition: transform 0.12s ease, border-color 0.12s ease;
+}
+.cta:hover { border-color: var(--accent); transform: translateY(-1px); }
+.cta.primary {
+  background: var(--accent); border-color: var(--accent); color: #06121f;
+}
+.cta.primary:hover { background: #63a8ff; border-color: #63a8ff; }
+.cta-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+.cta-note { color: var(--muted); font-size: 14px; margin: 14px 0 0; }
+
+/* ------------------------------------------------------------------- hero */
+.hero { padding: 72px 0 56px; }
+.hero h1 {
+  margin: 0 0 20px;
+  font-size: clamp(2.1rem, 6.2vw, 3.7rem);
+  line-height: 1.08; letter-spacing: -0.03em; font-weight: 800;
+}
+.hero h1 em { color: var(--accent); font-style: normal; }
+.hero .lede {
+  margin: 0 0 30px; max-width: 46rem;
+  font-size: clamp(1.05rem, 2.4vw, 1.3rem);
+  color: var(--muted); line-height: 1.6;
+}
+
+/* --------------------------------------------------------------- sections */
+section { padding: 52px 0; border-top: 1px solid var(--border); }
+section > .wrap > h2 {
+  margin: 0 0 10px;
+  font-size: clamp(1.5rem, 3.6vw, 2.1rem);
+  letter-spacing: -0.02em; line-height: 1.2;
+}
+.section-lede { margin: 0 0 32px; color: var(--muted); max-width: 46rem; }
+
+.grid { display: grid; gap: 18px; grid-template-columns: 1fr; }
+@media (min-width: 640px) { .grid.two   { grid-template-columns: repeat(2, 1fr); } }
+@media (min-width: 900px) { .grid.three { grid-template-columns: repeat(3, 1fr); } }
+
+.card {
+  background: var(--bg-2); border: 1px solid var(--border);
+  border-radius: 10px; padding: 22px;
+}
+.card h3 { margin: 0 0 8px; font-size: 1.06rem; letter-spacing: -0.01em; }
+.card p  { margin: 0; color: var(--muted); font-size: 15px; }
+.card .k { font-size: 1.85rem; font-weight: 700; color: var(--accent); display: block; line-height: 1.1; }
+.card .k.green  { color: var(--green); }
+.card .k.amber  { color: var(--amber); }
+.card .k.purple { color: var(--purple); }
+
+/* the pipeline strip */
+.pipe { display: flex; flex-wrap: wrap; gap: 8px; align-items: stretch; list-style: none; padding: 0; margin: 0; }
+.pipe li {
+  flex: 1 1 8.5rem;
+  background: var(--bg-2); border: 1px solid var(--border);
+  border-radius: 8px; padding: 14px 15px;
+}
+.pipe li b { display: block; font-size: 14px; margin-bottom: 3px; }
+.pipe li span { color: var(--muted); font-size: 13px; line-height: 1.45; display: block; }
+
+.tags { display: flex; flex-wrap: wrap; gap: 7px; padding: 0; margin: 0; list-style: none; }
+.tags li {
+  background: var(--bg-3); border: 1px solid var(--border);
+  border-radius: 999px; padding: 5px 13px; font-size: 13.5px; color: var(--muted);
+}
+.tags li b { color: var(--fg); font-weight: 600; }
+
+/* -------------------------------------------------------------------- FAQ */
+.faq { display: grid; gap: 12px; }
+.faq details {
+  background: var(--bg-2); border: 1px solid var(--border);
+  border-radius: 10px; padding: 0 18px;
+}
+.faq summary {
+  cursor: pointer; padding: 16px 0; font-weight: 600;
+  list-style: none; display: flex; justify-content: space-between; gap: 14px;
+  align-items: flex-start;
+}
+.faq summary::-webkit-details-marker { display: none; }
+.faq summary::after {
+  content: "+"; color: var(--accent); font-size: 1.35rem; line-height: 1;
+  flex: none; transition: transform 0.15s ease;
+}
+.faq details[open] summary::after { transform: rotate(45deg); }
+.faq details > div { padding: 0 0 16px; color: var(--muted); }
+.faq details > div > :first-child { margin-top: 0; }
+.faq details > div > :last-child  { margin-bottom: 0; }
+
+/* ------------------------------------------------------------------- prose */
+.prose { padding: 48px 0 64px; max-width: 46rem; }
+.prose h1 { font-size: clamp(1.9rem, 5vw, 2.6rem); margin: 0 0 8px; letter-spacing: -0.02em; }
+.prose .updated { color: var(--muted); font-size: 14px; margin: 0 0 34px; }
+.prose h2 {
+  font-size: 1.28rem; margin: 40px 0 10px;
+  padding-top: 20px; border-top: 1px solid var(--border); letter-spacing: -0.01em;
+}
+.prose h3 { font-size: 1.05rem; margin: 26px 0 8px; }
+.prose p, .prose li { color: #c2ccd8; }
+.prose ul, .prose ol { padding-left: 22px; }
+.prose li { margin: 7px 0; }
+.prose a { color: var(--accent); }
+.prose code {
+  background: var(--bg-3); border: 1px solid var(--border);
+  border-radius: 4px; padding: 1px 5px; font-size: 0.88em;
+}
+.callout {
+  background: var(--bg-2); border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: 0 8px 8px 0; padding: 16px 18px; margin: 22px 0;
+}
+.callout p { margin: 0; }
+.callout.warn { border-left-color: var(--amber); }
+
+.prose table { width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 14.5px; display: block; overflow-x: auto; }
+.prose th, .prose td { border: 1px solid var(--border); padding: 9px 12px; text-align: left; vertical-align: top; }
+.prose th { background: var(--bg-3); font-size: 13px; text-transform: uppercase; letter-spacing: 0.4px; color: var(--muted); }
+
+/* ------------------------------------------------------------------ footer */
+.site-foot { border-top: 1px solid var(--border); padding: 40px 0 52px; margin-top: 8px; }
+.foot-grid { display: grid; gap: 28px; grid-template-columns: 1fr; }
+@media (min-width: 720px) { .foot-grid { grid-template-columns: 2fr 1fr 1fr; } }
+.foot-grid h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.6px; color: var(--muted); margin: 0 0 12px; }
+.foot-grid ul { list-style: none; padding: 0; margin: 0; }
+.foot-grid li { margin: 7px 0; }
+.foot-grid a { color: #c2ccd8; text-decoration: none; font-size: 15px; }
+.foot-grid a:hover { color: var(--accent); text-decoration: underline; }
+.foot-note { color: var(--muted); font-size: 14px; margin: 0; max-width: 34rem; }
+.foot-bottom {
+  margin-top: 34px; padding-top: 20px; border-top: 1px solid var(--border);
+  color: var(--muted); font-size: 13.5px;
+  display: flex; gap: 14px; flex-wrap: wrap; justify-content: space-between;
+}
+
+/* --------------------------------------------------------------------- 404 */
+.notfound { padding: 84px 0 96px; text-align: center; }
+.notfound .code { font-size: clamp(3.4rem, 14vw, 6rem); font-weight: 800; color: var(--accent); line-height: 1; margin: 0; letter-spacing: -0.04em; }
+.notfound h1 { font-size: clamp(1.4rem, 4vw, 1.9rem); margin: 14px 0 12px; }
+.notfound p { color: var(--muted); max-width: 34rem; margin: 0 auto 28px; }
+.notfound .cta-row { justify-content: center; }
+
+.visually-hidden {
+  position: absolute; width: 1px; height: 1px;
+  padding: 0; margin: -1px; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* On a phone the header must not cost two lines of a 812px viewport. Every
+   link here also exists in the page body and the footer, so below this width
+   the header keeps the brand and the one action worth a permanent slot. */
+@media (max-width: 660px) {
+  .site-head .wrap { min-height: 52px; flex-wrap: nowrap; }
+  .site-nav a:not(:last-child) { display: none; }
+  .site-nav a:last-child {
+    background: var(--accent); color: #06121f; font-weight: 600;
+    padding: 8px 14px; white-space: nowrap;
+  }
+  .site-nav a:last-child:hover { background: #63a8ff; color: #06121f; }
+  .hero { padding: 44px 0 40px; }
+  section { padding: 40px 0; }
+}
