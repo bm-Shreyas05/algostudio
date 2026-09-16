@@ -254,12 +254,18 @@ def main() -> int:
         fail("/api", "a missing API endpoint returned HTML instead of JSON")
 
     # ------------------------------------------------------- redirects
+    # One page must not be reachable at several URLs: the canonical tag says
+    # which one counts, and these make the others stop existing.
     for url, filename in ROUTES.items():
         if url == "/":
             continue
         response = client.get(f"/{filename}", follow_redirects=False)
         if response.status_code != 301:
             fail(f"/{filename}", f"should 301 to {url}, got {response.status_code}")
+
+        trailing = client.get(f"{url}/", follow_redirects=False)
+        if trailing.status_code != 301:
+            fail(f"{url}/", f"should 301 to {url}, got {trailing.status_code}")
 
     # --------------------------------------------------------- caching
     head = client.get("/")

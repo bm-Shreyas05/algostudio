@@ -512,6 +512,14 @@ def _mount_frontend(app: FastAPI) -> None:
         """
         if path.startswith(("api/", "ws/")):
             raise HTTPException(status_code=404, detail=f"no such endpoint: /{path}")
+
+        # "/faq/" is a URL people type and link to. FastAPI would normally
+        # redirect it to "/faq", but this catch-all matches first and would
+        # otherwise turn a working page into a 404.
+        trimmed = "/" + path.rstrip("/")
+        if path.endswith("/") and trimmed in ROUTES:
+            return RedirectResponse(trimmed, status_code=301)
+
         if (dist / "404.html").is_file():
             return page("404.html", status=404)
         raise HTTPException(status_code=404, detail="not found")
