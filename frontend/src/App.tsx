@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "./api/client";
-import type { AlgorithmPlugin, EncodedValue } from "./api/types";
+import type { AlgorithmPlugin, EncodedValue, HeapObject } from "./api/types";
 import type { ChangedBinding } from "./components/Panels";
 import { AIPanel } from "./components/AIPanel";
+import { AlgorithmBrowser } from "./components/AlgorithmBrowser";
 import { FocusStrip } from "./components/FocusStrip";
+import { Icon } from "./components/Icon";
+import { Popover } from "./components/Popover";
 import {
   AnalyticsPanel, CallStackPanel, ConsolePanel, TimelinePanel, VariablesPanel,
 } from "./components/Panels";
@@ -27,6 +30,38 @@ print("total is", x)
 type RightTab = "variables" | "callstack" | "calltree";
 type BottomTab = "timeline" | "console" | "analytics" | "ai";
 type PaneId = "source" | "canvas" | "inspector" | "bottom";
+
+/**
+ * The four shown on the empty canvas. Chosen so that each one lands on a
+ * different view -- an array, a graph, a tree, a table -- which is the fastest
+ * possible demonstration that the pictures are derived rather than drawn.
+ */
+const FEATURED: { id: string; view: string; hint: string }[] = [
+  { id: "bubble_sort", view: "Array", hint: "Watch swaps and comparisons on a list" },
+  { id: "bfs", view: "Graph", hint: "Follow a traversal node by node" },
+  { id: "tree_traversals", view: "Tree", hint: "See recursion walk a tree" },
+  { id: "edit_distance", view: "Table", hint: "Fill a dynamic-programming grid" },
+];
+
+/** Plain-English names for the instrumentation levels. */
+const GRANULARITY: { id: string; label: string; detail: string }[] = [
+  { id: "minimal", label: "Statements", detail: "One step per line. Fastest; least detail." },
+  { id: "standard", label: "Expressions", detail: "Every read, write and comparison. The default." },
+  { id: "verbose", label: "Everything", detail: "Every sub-expression. Long recordings." },
+];
+
+/**
+ * " · 6 items" for a container, nothing for anything else.
+ *
+ * Only a list, tuple, set or dict has a size worth printing. For an object,
+ * `n` counts its *fields*, so a binary-tree root read "Tree · 3 items" -- its
+ * value, left and right -- on an eight-node tree, which is simply false.
+ */
+function sizeLabel(obj: HeapObject | undefined): string {
+  if (!obj || typeof obj.n !== "number") return "";
+  if (!obj.items && !obj.entries) return "";
+  return ` · ${obj.n} ${obj.n === 1 ? "item" : "items"}`;
+}
 
 /** Tab order on narrow screens: what you look at most, first. */
 const MOBILE_PANES: [PaneId, string][] = [
@@ -54,6 +89,7 @@ export default function App() {
      container changes. */
   const isMobile = useMediaQuery(MOBILE_QUERY);
   const [mobilePane, setMobilePane] = useState<PaneId>("canvas");
+  const [browserOpen, setBrowserOpen] = useState(false);
 
   useEffect(() => {
     api.algorithms().then((r) => setAlgorithms(r.algorithms)).catch(() => undefined);
@@ -131,12 +167,50 @@ export default function App() {
     if (result) setEditing(false);
   }, [exec, granularity]);
 
+  const pickAlgorithm = useCallback((id: string) => {
+    setBrowserOpen(false);
+    loadAlgorithm(id);
+    // On a phone the canvas is one tab among four; show the thing just picked.
+    setMobilePane("canvas");
+  }, [loadAlgorithm]);
+
+  /** Leave the catalogue for the editor, with a clean program to start from. */
+  const writeOwn = useCallback(() => {
+    setBrowserOpen(false);
+    // Keep what they were writing; replace only a bundled algorithm's source,
+    // which they did not write and would not expect to be editing.
+    if (selectedAlgorithm) setSource(STARTER);
+    setSelectedAlgorithm("");
+    setEditing(true);
+    setMobilePane("source");
+  }, [selectedAlgorithm]);
+
   /* ---- keyboard transport ---------------------------------------------- */
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      const tag = (e.target as HTMLElement)?.tagName;
-      if (editing || tag === "INPUT" || tag === "TEXTAREA") return;
-      if (e.key === "ArrowRight") { e.preventDefault(); exec.stepForward(); }
+      // Ctrl/Cmd+K opens the library from anywhere, including the editor --
+      // it is the one shortcut people expect to work while typing.
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setBrowserOpen(true);
+        return;
+      }
+      if (browserOpen) return;               // the palette owns the keyboard
+
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName;
+      // Space and the arrows already mean something to a focused control:
+      // Space presses a button, arrows move a slider or a select. Acting on
+      // them here as well made one keypress do two things -- pressing Space on
+      // the Back button stepped back *and* toggled playback.
+      if (
+        editing || target?.isContentEditable ||
+        tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" ||
+        (tag === "BUTTON" && (e.key === " " || e.key === "Enter"))
+      ) return;
+
+      if (e.key === "/") { e.preventDefault(); setBrowserOpen(true); }
+      else if (e.key === "ArrowRight") { e.preventDefault(); exec.stepForward(); }
       else if (e.key === "ArrowLeft") { e.preventDefault(); exec.stepBack(); }
       else if (e.key === " ") {
         e.preventDefault();
@@ -153,7 +227,7 @@ export default function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [editing, exec, maximized]);
+  }, [editing, exec, maximized, browserOpen]);
 
   const inspectVariable = useCallback((name: string) => {
     setFocusVariable(name);
@@ -164,12 +238,18 @@ export default function App() {
 
   const plans = useMemo(() => {
     if (!bundle) return [];
-    return bundle.views
+    const visible = bundle.views
       .map((v) => (pinned[v.ref] ? { ...v, view: pinned[v.ref] } : v))
       // Synthetic plans (strings, scalar frames) are not heap objects; they
       // bring their own record in props.
-      .filter((v) => state.heap[v.ref] || v.props?.record)
-      .slice(0, 6);
+      .filter((v) => state.heap[v.ref] || v.props?.record);
+    // An object no variable names is almost always structure nested inside one
+    // that is named -- BFS's per-node adjacency lists, inside `graph` -- which
+    // that card already draws. Showing it again produced cards titled "h7" and
+    // "h4": internal heap ids, meaningless to anyone reading. Only when nothing
+    // at all is named (a bare expression, a temporary) are they shown.
+    const named = visible.filter((v) => v.name);
+    return (named.length ? named : visible).slice(0, 6);
   }, [bundle, pinned, state]);
 
   const plugin = useMemo(
@@ -207,6 +287,7 @@ export default function App() {
         breakpoints={exec.breakpoints}
         onToggleBreakpoint={exec.toggleBreakpoint}
         branchLine={branchLine}
+        onRun={doRun}
       />
       {exec.breakpoints.size > 0 && (
         <div className="pane-foot">
@@ -234,45 +315,73 @@ export default function App() {
         />
       )}
       <div className="canvas-body">
-        {!bundle && (
+        {!bundle && !exec.busy && (
           <div className="canvas-empty">
-            <h3>Nothing recorded yet</h3>
-            {curated ? (
-              <p>
-                Pick an algorithm from the menu above — playback starts
-                automatically. This deployment runs the bundled catalogue only;
-                the editor is disabled because there is no container sandbox
-                behind it.
-              </p>
-            ) : runsLocally ? (
-              <p>
-                Press <strong>▶ Run</strong> to execute the code on the left, or
-                pick an algorithm from the menu above. Your own code runs
-                <strong> inside this tab</strong> — it is never uploaded, and the
-                server is never asked to execute it. The first run downloads a
-                Python runtime, once.
-              </p>
-            ) : (
-              <p>
-                Press <strong>▶ Run</strong> to execute the code on the left, or pick
-                an algorithm from the menu above. Playback starts automatically.
+            <p className="ce-eyebrow">Start here</p>
+            <h2 className="ce-title">Pick something to watch run</h2>
+            <p className="ce-lede">
+              Each of these lands on a different kind of picture. None of them is
+              drawn by hand — the view is worked out from the shape of the data
+              while the program runs.
+            </p>
+
+            <div className="featured">
+              {FEATURED.map((f) => {
+                const algo = algorithms.find((a) => a.id === f.id);
+                if (!algo) return null;
+                return (
+                  <button
+                    key={f.id}
+                    type="button"
+                    className="featured-card"
+                    onClick={() => pickAlgorithm(f.id)}
+                  >
+                    <span className="fc-view">{f.view}</span>
+                    <span className="fc-name">{algo.name}</span>
+                    <span className="fc-hint">{f.hint}</span>
+                    {algo.complexity && <span className="fc-cx">{algo.complexity.time}</span>}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="ce-more">
+              <button type="button" className="btn-secondary" onClick={() => setBrowserOpen(true)}>
+                <Icon name="library" />
+                Browse all {algorithms.length || 49} algorithms
+                {!isMobile && <kbd>Ctrl K</kbd>}
+              </button>
+              {canEdit && (
+                <button type="button" className="btn-ghost" onClick={writeOwn}>
+                  <Icon name="code" />
+                  Write your own code
+                </button>
+              )}
+            </div>
+
+            {runsLocally && (
+              <p className="ce-note">
+                <Icon name="lock" size={14} />
+                Code you write runs inside this tab. It is never uploaded, and the
+                server is never asked to execute it.
               </p>
             )}
-            <ul>
-              <li>Views are chosen from the shape of the data at runtime — an
-                  adjacency map becomes a graph, a list of numbers becomes an array.</li>
-              {isMobile ? (
-                <li>Use the tabs above to move between the visualization, the
-                    code, the data and the timeline.</li>
-              ) : (
-                <>
-                  <li><kbd>←</kbd> <kbd>→</kbd> step, <kbd>space</kbd> plays,
-                      <kbd>Esc</kbd> restores a maximized panel.</li>
-                  <li>Drag any divider to resize, or press <strong>⛶</strong> on a panel
-                      to give it the whole window.</li>
-                </>
-              )}
-            </ul>
+            {curated && (
+              <p className="ce-note">
+                This deployment runs the bundled catalogue only — there is no
+                container sandbox behind it to run code you write.
+              </p>
+            )}
+          </div>
+        )}
+        {!bundle && exec.busy && (
+          <div className="canvas-loading" role="status">
+            <span className="spinner" aria-hidden="true" />
+            <span>
+              {exec.engineStatus && exec.engineStatus.stage !== "ready"
+                ? exec.engineStatus.message
+                : "Recording the execution…"}
+            </span>
           </div>
         )}
         {plans.map((plan) => {
@@ -280,15 +389,24 @@ export default function App() {
           return (
             <div key={plan.ref} className="view-card">
               <div className="view-head">
-                <strong>{plan.name || plan.ref}</strong>
-                <span className="muted" title={plan.reason}>
-                  {VIEW_LABELS[plan.view] ?? plan.view} · {plan.score.toFixed(2)}
+                <strong>{plan.name || `unnamed ${state.heap[plan.ref]?.t ?? "value"}`}</strong>
+                {/* The resolver's confidence belongs in the tooltip, for anyone
+                    asking why this view was chosen -- not on the card, where a
+                    bare "0.87" meant nothing to a learner. The size is what
+                    tells two cards both called `arr` apart in a recursion. */}
+                <span
+                  className="muted"
+                  title={`${plan.reason} (confidence ${plan.score.toFixed(2)})`}
+                >
+                  {VIEW_LABELS[plan.view] ?? plan.view}
+                  {sizeLabel(state.heap[plan.ref])}
                 </span>
                 {plan.alternatives.length > 0 && (
                   <select
                     value={plan.view}
                     onChange={(e) => setPinned((p) => ({ ...p, [plan.ref]: e.target.value }))}
-                    title="view as…"
+                    title="Show this value as a different view"
+                    aria-label={`Show ${plan.name || "this value"} as`}
                   >
                     {[plan.view, ...plan.alternatives.map((a) => a.view)]
                       .filter((v, i, arr) => arr.indexOf(v) === i)
@@ -401,113 +519,141 @@ export default function App() {
             it. Wrapping a link means the studio has a way back to the site. */}
         <h1 className="brand">
           <a href="/" title="Back to the AlgoStudio overview">
-            Algo<span>Studio</span>
+            <img src="/favicon.svg" width="22" height="22" alt="" />
+            <span className="brand-text">Algo<span>Studio</span></span>
           </a>
         </h1>
 
-        <label className="visually-hidden" htmlFor="algorithm-select">
-          Algorithm
-        </label>
-        <select
-          id="algorithm-select"
-          value={selectedAlgorithm}
-          onChange={(e) => loadAlgorithm(e.target.value)}
-          title="Packaged algorithms run through exactly the same pipeline as your own code"
+        {/* The way in. It used to be a native <select> of 49 options; now it
+            opens a searchable library, and says what is loaded right now. */}
+        <button
+          type="button"
+          className="library-btn"
+          onClick={() => setBrowserOpen(true)}
+          aria-haspopup="dialog"
+          title="Choose an algorithm (Ctrl+K)"
         >
-          <option value="">— your own code —</option>
-          {Object.entries(
-            algorithms.reduce<Record<string, AlgorithmPlugin[]>>((groups, a) => {
-              (groups[a.category] ??= []).push(a);
-              return groups;
-            }, {}),
-          )
-            .sort(([a], [b]) => a.localeCompare(b))
-            .map(([category, items]) => (
-              <optgroup key={category} label={category}>
-                {items.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.name}
-                    {a.complexity ? `  —  ${a.complexity.time}` : ""}
-                  </option>
-                ))}
-              </optgroup>
-            ))}
-        </select>
-
-        <label className="visually-hidden" htmlFor="granularity-select">
-          Instrumentation granularity
-        </label>
-        <select id="granularity-select" value={granularity}
-                onChange={(e) => setGranularity(e.target.value)}
-                title="How finely execution is instrumented">
-          <option value="minimal">minimal</option>
-          <option value="standard">standard</option>
-          <option value="verbose">verbose</option>
-        </select>
+          <Icon name="library" />
+          <span className="lb-text">
+            <span className="lb-kicker">{plugin ? "Algorithm" : "Library"}</span>
+            <span className="lb-name">
+              {plugin ? plugin.name : selectedAlgorithm ? "Loading…" : "Your code"}
+            </span>
+          </span>
+          <Icon name="chevron" size={14} />
+        </button>
 
         <button
-          className="primary"
+          className="primary run-btn"
           onClick={doRun}
           disabled={exec.busy || curated}
           title={curated
             ? "This deployment runs the bundled catalogue only — pick an algorithm"
             : runsLocally
-              ? "Runs in this tab; your code is never sent to the server"
-              : "Execute the source on the left"}
+              ? "Run your code in this tab (Ctrl+Enter). It is never sent to the server."
+              : "Run the code on the left (Ctrl+Enter)"}
         >
+          {exec.busy ? <span className="spinner small" aria-hidden="true" /> : <Icon name="play" />}
           {exec.busy
             ? exec.engineStatus && exec.engineStatus.stage !== "ready"
               ? "Preparing…"
               : "Running…"
-            : "▶ Run"}
+            : "Run"}
         </button>
         <button
+          type="button"
+          className="btn-secondary"
           onClick={() => setEditing((v) => !v)}
           disabled={!bundle || curated}
           title={editing ? "Show the recorded trace" : "Go back to editing the source"}
         >
-          {editing ? "View trace" : "Edit code"}
+          <Icon name="code" />
+          <span className="hide-narrow">{editing ? "View trace" : "Edit code"}</span>
         </button>
 
         <div className="grow" />
-        <div className="status">
+
+        <div className="status" aria-live="polite">
           {maximized && (
             <button className="chip-btn on" onClick={() => setMaximized(null)}
                     title="Esc also restores">
-              ⛶ {maximized} — restore
+              Restore layout
             </button>
           )}
           {bundle && (
-            <>
-              <span className={`badge ${bundle.summary.status}`}>{bundle.summary.status}</span>
-              <span>{bundle.summary.event_count} events</span>
-              {bundle.summary.lifters && <span title="semantic lifting is on">lifting on</span>}
-            </>
+            <span className="run-summary">
+              <span className={`badge ${bundle.summary.status}`}>
+                {bundle.summary.status === "ok" ? "Finished" : bundle.summary.status.replace("_", " ")}
+              </span>
+              <span className="hide-narrow">
+                {bundle.summary.event_count.toLocaleString()} events
+              </span>
+            </span>
           )}
           {health && (
             <span
+              className={`engine-chip${runsLocally ? " local" : ""}`}
               title={
                 runsLocally
                   ? "Your code runs in this tab and is never sent to the server"
                   : `sandbox: ${health.sandbox_mode}`
               }
             >
+              {runsLocally && <Icon name="lock" size={13} />}
               {runsLocally
-                ? "runs in your browser"
+                ? "Runs in your browser"
                 : curated
-                  ? `${health.sandbox_mode} · catalogue only`
-                  : health.sandbox_mode}
+                  ? "Catalogue only"
+                  : `${health.sandbox_mode} sandbox`}
             </span>
           )}
-          {/* The studio is a dead end without these: it is served at its own
-              URL, so someone who lands here directly has no other route to
-              what the project is or what it stores. */}
-          <nav className="chrome-links" aria-label="Site">
+        </div>
+
+        <Popover label="Settings" trigger={<Icon name="settings" size={18} />}>
+          <div className="pop-section">
+            <div className="pop-title" id="gran-title">Recording detail</div>
+            <div role="radiogroup" aria-labelledby="gran-title" className="gran-options">
+              {GRANULARITY.map((g) => (
+                <label key={g.id} className={`gran-option${granularity === g.id ? " on" : ""}`}>
+                  <input
+                    type="radio"
+                    name="granularity"
+                    value={g.id}
+                    checked={granularity === g.id}
+                    onChange={() => setGranularity(g.id)}
+                  />
+                  <span className="go-label">{g.label}</span>
+                  <span className="go-detail">{g.detail}</span>
+                </label>
+              ))}
+            </div>
+            <p className="pop-note">Applies to the next run.</p>
+          </div>
+        </Popover>
+
+        {/* The studio is a dead end without these: it is served at its own URL,
+            so someone who lands here directly has no other route to what the
+            project is or what it stores. */}
+        <Popover label="Help and shortcuts" trigger={<Icon name="help" size={18} />}>
+          <div className="pop-section">
+            <div className="pop-title">Keyboard</div>
+            <dl className="shortcuts">
+              <dt><kbd>Space</kbd></dt><dd>Play or pause</dd>
+              <dt><kbd>←</kbd> <kbd>→</kbd></dt><dd>Step back or forward</dd>
+              <dt><kbd>Home</kbd> <kbd>End</kbd></dt><dd>Jump to start or end</dd>
+              <dt><kbd>Ctrl</kbd> <kbd>K</kbd></dt><dd>Open the library</dd>
+              <dt><kbd>Ctrl</kbd> <kbd>Enter</kbd></dt><dd>Run from the editor</dd>
+              <dt><kbd>Esc</kbd></dt><dd>Close, or restore a maximized panel</dd>
+            </dl>
+          </div>
+          <nav className="pop-section pop-links" aria-label="Site">
+            <a href="/">About AlgoStudio</a>
             <a href="/faq">FAQ</a>
             <a href="/privacy">Privacy</a>
             <a href="/terms">Terms</a>
+            <a href="https://github.com/bm-Shreyas05/algostudio" rel="noopener">Source on GitHub</a>
           </nav>
-        </div>
+        </Popover>
       </header>
 
       <Transport
@@ -612,19 +758,22 @@ export default function App() {
       ) : maximized ? (
         <div id="workspace" className="workspace maximized">{PANES[maximized]}</div>
       ) : (
+        // v2: the redesign gives the visualization the most room by default.
+        // Saved v1 layouts are left alone rather than migrated -- they were
+        // sized for the old chrome, and applying them would hide the change.
         <Split
           id="workspace"
           direction="column"
-          storageKey="algostudio.layout.v1.rows"
-          initial={[64, 36]}
-          minPx={110}
+          storageKey="algostudio.layout.v2.rows"
+          initial={[70, 30]}
+          minPx={120}
           className="workspace"
         >
           <Split
             direction="row"
-            storageKey="algostudio.layout.v1.cols"
-            initial={[30, 44, 26]}
-            minPx={160}
+            storageKey="algostudio.layout.v2.cols"
+            initial={[28, 50, 22]}
+            minPx={180}
           >
             {sourcePane}
             {canvasPane}
@@ -633,6 +782,15 @@ export default function App() {
           {bottomPane}
         </Split>
       )}
+
+      <AlgorithmBrowser
+        open={browserOpen}
+        algorithms={algorithms}
+        currentId={selectedAlgorithm}
+        onClose={() => setBrowserOpen(false)}
+        onPick={pickAlgorithm}
+        onWriteOwn={writeOwn}
+      />
     </div>
   );
 }

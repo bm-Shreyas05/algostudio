@@ -42,8 +42,18 @@ export function VariablesPanel({
           )}{" "}
           {previewLive(value, state.heap, 34)}
           {ref && (
-            <span className="ref-badge" title={renderHeap(state.heap[ref])}>
-              {ref}
+            // Object identity, which is what makes aliasing visible: two
+            // variables showing the same number are the same object. Shown as
+            // "#8" rather than the internal "h8", and the tooltip says why it
+            // is there at all.
+            <span
+              className="ref-badge"
+              title={
+                `Object #${ref.replace(/^h/, "")} — any variable showing the same ` +
+                `number refers to this same object.\n\n${renderHeap(state.heap[ref])}`
+              }
+            >
+              #{ref.replace(/^h/, "")}
             </span>
           )}
         </td>
@@ -184,6 +194,8 @@ export function TimelinePanel({
         ))}
         <input
           className="search"
+          type="search"
+          aria-label="Search the timeline"
           placeholder="search events…"
           value={query}
           onChange={(e) => setQuery(e.target.value)}

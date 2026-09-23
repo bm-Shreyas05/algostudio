@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import type { CapabilityIssue, ExecutionState } from "../api/types";
+import { highlightLines } from "../lib/highlight";
+import { CodeEditor } from "./CodeEditor";
 
 interface Props {
   source: string;
@@ -11,6 +13,8 @@ interface Props {
   breakpoints: Set<number>;
   onToggleBreakpoint: (line: number) => void;
   branchLine: number | null;
+  /** Ctrl/Cmd+Enter from inside the editor. */
+  onRun?: () => void;
 }
 
 /**
@@ -22,9 +26,11 @@ interface Props {
  */
 export function SourceView({
   source, editable, onChange, state, lineHits, issues, breakpoints,
-  onToggleBreakpoint, branchLine,
+  onToggleBreakpoint, branchLine, onRun,
 }: Props) {
   const lines = useMemo(() => source.split("\n"), [source]);
+  // Tokenized as a whole, then split, so a multi-line string stays a string.
+  const highlighted = useMemo(() => highlightLines(source), [source]);
   const currentLine = state.current_loc?.line ?? 0;
   const activeRef = useRef<HTMLDivElement | null>(null);
 
@@ -43,20 +49,12 @@ export function SourceView({
   }, [currentLine]);
 
   if (editable) {
-    return (
-      <textarea
-        className="source-editor"
-        spellCheck={false}
-        value={source}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder="# Write Python here, then press Run"
-      />
-    );
+    return <CodeEditor value={source} onChange={onChange} onRun={onRun} />;
   }
 
   return (
     <div className="source-view">
-      {lines.map((text, i) => {
+      {lines.map((_line, i) => {
         const number = i + 1;
         const hits = lineHits?.[String(number)] ?? 0;
         const issue = issueByLine.get(number);
@@ -87,9 +85,11 @@ export function SourceView({
               {number}
             </span>
             <span className="hits">{hits || ""}</span>
-            <code className={issue ? `issue ${issue.severity}` : undefined}>
-              {text || " "}
-            </code>
+            <code
+              className={issue ? `issue ${issue.severity}` : undefined}
+              // Built only from our own token classes and escaped text.
+              dangerouslySetInnerHTML={{ __html: highlighted[i] || " " }}
+            />
           </div>
         );
       })}
