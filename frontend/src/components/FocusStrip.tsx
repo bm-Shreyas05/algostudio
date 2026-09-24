@@ -1,6 +1,6 @@
 import { useMemo } from "react";
-import type { AsEvent, ExecutionState } from "../api/types";
-import { preview, scalarOf } from "../lib/format";
+import type { AsEvent, EncodedValue, ExecutionState, HeapObject } from "../api/types";
+import { preview, previewContents, previewLive, scalarOf } from "../lib/format";
 
 /**
  * The headline: what the algorithm is doing at this exact step.
@@ -18,6 +18,8 @@ interface Focus {
   tone: "algorithm" | "data" | "flow" | "call" | "error" | "idle";
   headline: string;
   detail?: string;
+  /** The run's answer; printed from the heap, so a list shows its contents. */
+  result?: EncodedValue;
 }
 
 const WINDOW = 6;
@@ -30,17 +32,34 @@ export function FocusStrip({
   step: number;
   statement: string;
 }) {
-  const focus = useMemo(() => describe(events, step), [events, step]);
+  const focus = useMemo(() => describe(events, step, state.heap), [events, step, state.heap]);
+  // Once the program has ended, the line it last touched is history -- at the
+  // end of a bubble sort that was `def bubble_sort(arr):`, which read as
+  // though the sort were about to start again.
+  const finished = Boolean(state.finished_reason);
 
   const counters = useMemo(() => {
+    // Keys as the reducer counts them live. This list once asked for
+    // "comparisons" and "swaps", which only exist in the whole-run totals, so
+    // the two counters that matter most for a sort never appeared at all.
     const wanted = [
-      ["comparisons", "compares"], ["swaps", "swaps"], ["algo.visit", "visited"],
-      ["algo.relax", "relaxed"], ["array_writes", "writes"],
-      ["function_calls", "calls"], ["loop_iterations", "iterations"],
+      ["algo.compare", "comparison", "comparisons"], ["algo.swap", "swap", "swaps"],
+      ["algo.visit", "visited", "visited"], ["algo.relax", "relaxed", "relaxed"],
+      ["array_writes", "item write", "item writes"],
+      // "made", because "4 calls" beside "4 calls deep" read as one fact twice.
+      ["function_calls", "call made", "calls made"],
+      ["loop_iterations", "loop pass", "loop passes"],
     ] as const;
+    // Two, not seven. Watching comparisons climb is how you see a quadratic
+    // sort being quadratic, so the counters stay -- but a third row of seven
+    // numbers under every step was noise, and the full set lives in Stats.
     return wanted
-      .map(([key, label]) => [label, state.counters[key]] as const)
-      .filter(([, value]) => typeof value === "number" && value > 0);
+      .map(([key, one, many]) => {
+        const value = state.counters[key];
+        return [value === 1 ? one : many, value] as const;
+      })
+      .filter(([, value]) => typeof value === "number" && value > 0)
+      .slice(0, 2);
   }, [state.counters]);
 
   const frame = state.frames[state.frames.length - 1];
@@ -49,32 +68,32 @@ export function FocusStrip({
     <div className={`focus-strip tone-${focus.tone}`}>
       <div className="focus-main">
         <span className="focus-headline">{focus.headline}</span>
-        {focus.detail && <span className="focus-detail">{focus.detail}</span>}
+        {focus.result ? (
+          <span className="focus-detail">result: {previewContents(focus.result, state.heap, 60)}</span>
+        ) : (
+          focus.detail && <span className="focus-detail">{focus.detail}</span>
+        )}
       </div>
       <div className="focus-meta">
-        {statement && <code className="focus-stmt">{statement}</code>}
-        {frame && frame.name !== "<module>" && (
+        {statement && !finished && <code className="focus-stmt">{statement}</code>}
+        {!finished && frame && frame.name !== "<module>" && (
           <span className="focus-frame">in {frame.name}()</span>
         )}
         {state.frames.length > 2 && (
-          <span className="focus-frame">depth {state.frames.length - 1}</span>
+          <span className="focus-frame">{state.frames.length - 1} calls deep</span>
         )}
+        {counters.map(([label, value]) => (
+          <span key={label} className="focus-count">
+            <b>{value}</b> {label}
+          </span>
+        ))}
       </div>
-      {counters.length > 0 && (
-        <div className="focus-counters">
-          {counters.map(([label, value]) => (
-            <span key={label}>
-              <b>{value}</b> {label}
-            </span>
-          ))}
-        </div>
-      )}
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-function describe(events: AsEvent[], step: number): Focus {
+function describe(events: AsEvent[], step: number, heap: Record<string, HeapObject>): Focus {
   if (step < 0 || !events.length) {
     return { tone: "idle", headline: "Ready" };
   }
@@ -82,15 +101,18 @@ function describe(events: AsEvent[], step: number): Focus {
   let best: { rank: number; focus: Focus } | null = null;
 
   for (let i = step; i >= low; i--) {
-    const candidate = rank(events[i]);
+    const candidate = rank(events[i], heap);
     if (candidate && (!best || candidate.rank > best.rank)) best = candidate;
     // An operation right on the cursor always wins; no need to look further.
-    if (best && best.rank >= 90 && i === step) break;
+    if (best && best.rank >= 90 && i === step && events[i].type !== "PROGRAM_FINISHED") break;
   }
   return best?.focus ?? { tone: "idle", headline: `Line ${events[step]?.loc?.line ?? "?"}` };
 }
 
-function rank(ev: AsEvent | undefined): { rank: number; focus: Focus } | null {
+function rank(
+  ev: AsEvent | undefined,
+  heap: Record<string, HeapObject>,
+): { rank: number; focus: Focus } | null {
   if (!ev) return null;
   const p = ev.payload;
 
@@ -104,14 +126,16 @@ function rank(ev: AsEvent | undefined): { rank: number; focus: Focus } | null {
   if (ev.type === "ALGORITHM_EVENT") {
     const a = (p.args ?? {}) as Record<string, any>;
     const name = p.name as string;
-    const where = p.ref ? "" : "";
     switch (name) {
       case "swap":
         return { rank: 95, focus: {
           tone: "algorithm",
           headline: `Swap [${a.i}] ↔ [${a.j}]`,
-          detail: `${preview(a.b, 14)} and ${preview(a.a, 14)} exchange places${where}`,
+          detail: `${preview(a.b, 14)} and ${preview(a.a, 14)} exchange places`,
         } };
+      case "result":
+        // What the catalogue's call returned: the answer the whole run was for.
+        return { rank: 98, focus: { tone: "idle", headline: "Finished", result: a.value } };
       case "compare": {
         const lhs = a.i !== null && a.i !== undefined ? `[${a.i}]` : "";
         const rhs = a.j !== null && a.j !== undefined ? `[${a.j}]` : "";
@@ -201,7 +225,7 @@ function rank(ev: AsEvent | undefined): { rank: number; focus: Focus } | null {
       } };
     case "FUNCTION_ENTERED": {
       const args = Object.entries((p.args ?? {}) as Record<string, any>)
-        .map(([k, v]) => `${k}=${preview(v, 10)}`)
+        .map(([k, v]) => `${k}=${previewLive(v, heap, 10)}`)
         .join(", ");
       return { rank: 66, focus: {
         tone: "call", headline: `Call ${p.name}(${args})`,
@@ -229,11 +253,24 @@ function rank(ev: AsEvent | undefined): { rank: number; focus: Focus } | null {
         tone: "flow", headline: `Prints ${JSON.stringify(String(p.text ?? "").trim())}`,
       } };
     case "PROGRAM_FINISHED":
-      return { rank: 99, focus: {
+      // Rank 97: below a "result" a step earlier, which says the same thing
+      // and also what the answer was.
+      return { rank: 97, focus: {
         tone: p.status === "ok" ? "idle" : "error",
-        headline: p.status === "ok" ? "Finished" : `Stopped: ${p.status}`,
+        headline: p.status === "ok" ? "Finished" : stoppedBecause(p.status),
+        detail: p.status === "ok" ? "step back to see any earlier moment" : undefined,
       } };
     default:
       return null;
+  }
+}
+
+/** A run's end status, as a sentence rather than the engine's enum. */
+export function stoppedBecause(status: string): string {
+  switch (status) {
+    case "budget_exceeded": return "Stopped: too many steps";
+    case "timeout": return "Stopped: took too long";
+    case "error": return "Ended with an error";
+    default: return `Stopped (${status.replace(/_/g, " ")})`;
   }
 }

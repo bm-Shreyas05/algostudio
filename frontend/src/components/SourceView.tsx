@@ -15,6 +15,8 @@ interface Props {
   branchLine: number | null;
   /** Ctrl/Cmd+Enter from inside the editor. */
   onRun?: () => void;
+  focusRequested?: boolean;
+  onFocusHandled?: () => void;
 }
 
 /**
@@ -26,12 +28,14 @@ interface Props {
  */
 export function SourceView({
   source, editable, onChange, state, lineHits, issues, breakpoints,
-  onToggleBreakpoint, branchLine, onRun,
+  onToggleBreakpoint, branchLine, onRun, focusRequested, onFocusHandled,
 }: Props) {
   const lines = useMemo(() => source.split("\n"), [source]);
   // Tokenized as a whole, then split, so a multi-line string stays a string.
   const highlighted = useMemo(() => highlightLines(source), [source]);
-  const currentLine = state.current_loc?.line ?? 0;
+  // Nothing is "current" once the program has ended; its last location is
+  // usually the `def` line of the function that returned last.
+  const currentLine = state.finished_reason ? 0 : state.current_loc?.line ?? 0;
   const activeRef = useRef<HTMLDivElement | null>(null);
 
   const maxHits = useMemo(
@@ -49,7 +53,15 @@ export function SourceView({
   }, [currentLine]);
 
   if (editable) {
-    return <CodeEditor value={source} onChange={onChange} onRun={onRun} />;
+    return (
+      <CodeEditor
+        value={source}
+        onChange={onChange}
+        onRun={onRun}
+        focusRequested={focusRequested}
+        onFocusHandled={onFocusHandled}
+      />
+    );
   }
 
   return (
@@ -78,13 +90,17 @@ export function SourceView({
                 issue
                   ? `${issue.severity}: ${issue.message}`
                   : hits
-                    ? `${hits} executions — click to toggle breakpoint`
-                    : "click to toggle breakpoint"
+                    ? `Ran ${hits} time${hits === 1 ? "" : "s"} — click to add a breakpoint`
+                    : "Click to add a breakpoint"
               }
             >
               {number}
             </span>
-            <span className="hits">{hits || ""}</span>
+            {/* The execution count used to be a second column of numbers
+                beside the line numbers -- two unlabelled columns of digits,
+                which read as a rendering fault. The tint behind each line
+                already shows which ran most; the exact count is in the line
+                number's tooltip. */}
             <code
               className={issue ? `issue ${issue.severity}` : undefined}
               // Built only from our own token classes and escaped text.

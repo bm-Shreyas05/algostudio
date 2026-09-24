@@ -1,5 +1,11 @@
 import type { AsEvent, EncodedValue, HeapObject } from "../api/types";
 
+/** Encoder tags whose `n` is a length. For an "object" it counts fields. */
+const CONTAINERS = new Set([
+  "list", "tuple", "set", "frozenset", "dict", "deque",
+  "defaultdict", "OrderedDict", "Counter", "array",
+]);
+
 /** Compact rendering of an encoded value. Mirrors core/events.py::preview. */
 export function preview(value: EncodedValue | undefined | null, max = 40): string {
   if (!value) return "?";
@@ -17,7 +23,9 @@ export function preview(value: EncodedValue | undefined | null, max = 40): strin
       return JSON.stringify(body);
     }
     case "ref":
-      return `${value.t}[${value.n}]`;
+      // "object[3]" read as a collection of three things; the 3 was the
+      // number of fields. Without the heap there is no class name to give.
+      return CONTAINERS.has(value.t) ? `${value.t}[${value.n}]` : value.t;
     case "cycle":
       return `↺ ${value.r}`;
     case "opaque":
@@ -47,8 +55,81 @@ export function previewLive(
   if (!isRef(value)) return preview(value, max);
   const record = heap[value.r];
   if (!record) return preview(value, max);
+  // An instance of the program's own class is named by its class: `Node`.
+  if (!CONTAINERS.has(record.t)) return record.cls ?? record.t;
   const size = record.n ?? record.items?.length ?? 0;
   return `${record.t}[${size}]`;
+}
+
+/**
+ * A value as Python would print it -- `[1, 2, 3, 5, 7, 9]`, not `list[6]` --
+ * cut to fit `max` characters.
+ *
+ * The variables panel used to show every list as its type and length, so the
+ * one thing a learner is watching -- what is in the list now -- was hidden
+ * behind a hover tooltip. As many items as fit are shown, then how many more
+ * there are. One level of nesting is expanded (a small matrix reads as a
+ * matrix); deeper than that, or when it will not fit, a container falls back
+ * to its type and length, and an object to its class name.
+ */
+export function previewContents(
+  value: EncodedValue | undefined,
+  heap: Record<string, HeapObject>,
+  max = 48,
+): string {
+  if (!isRef(value)) return preview(value, max);
+  return contents(value, heap, max, 0) ?? previewLive(value, heap, max);
+}
+
+/** The printed form if anything useful fits in `max` characters, else null. */
+function contents(
+  value: Extract<EncodedValue, { k: "ref" }>,
+  heap: Record<string, HeapObject>,
+  max: number,
+  depth: number,
+): string | null {
+  const record = heap[value.r];
+  if (!record) return null;
+
+  const inner = (v: EncodedValue): string => {
+    if (!isRef(v)) return preview(v, 16);
+    // A nested list is expanded once (a small matrix reads as a matrix). A
+    // nested object is only named: `Node(value=8, left=Node, right=Node)`
+    // says more than a line of cut-off field lists.
+    const nested = heap[v.r];
+    if (depth < 1 && nested && CONTAINERS.has(nested.t)) {
+      const text = contents(v, heap, 24, depth + 1);
+      if (text) return text;
+    }
+    return previewLive(v, heap);
+  };
+
+  let open = "[";
+  let close = "]";
+  let parts: string[];
+  if (record.items) {
+    if (record.t === "tuple") [open, close] = ["(", ")"];
+    else if (record.t === "set" || record.t === "frozenset") [open, close] = ["{", "}"];
+    else if (record.t === "deque") [open, close] = ["deque([", "])"];
+    parts = record.items.map(inner);
+  } else if (record.entries) {
+    [open, close] = ["{", "}"];
+    parts = record.entries.map(([k, v]) => `${inner(k)}: ${inner(v)}`);
+  } else if (record.fields) {
+    [open, close] = [`${record.cls ?? record.t}(`, ")"];
+    parts = Object.entries(record.fields).map(([k, v]) => `${k}=${inner(v)}`);
+  } else {
+    return null;
+  }
+
+  const total = record.items || record.entries ? (record.n ?? parts.length) : parts.length;
+  if (total === 0) return record.t === "set" ? "set()" : `${open}${close}`;
+  for (let count = parts.length; count >= 1; count--) {
+    const more = count < total ? `, … +${total - count}` : "";
+    const text = `${open}${parts.slice(0, count).join(", ")}${more}${close}`;
+    if (text.length <= max) return text;
+  }
+  return null;
 }
 
 export function scalarOf(value: EncodedValue | undefined): number | string | boolean | null {
@@ -122,8 +203,12 @@ export function summarize(ev: AsEvent): string {
       return p.var
         ? `iteration ${p.iteration} (${p.var} = ${preview(p.value)})`
         : `iteration ${p.iteration}`;
-    case "LOOP_FINISHED":
-      return `loop ends after ${p.iterations} (${p.exit})`;
+    case "LOOP_FINISHED": {
+      const passes = `${p.iterations} ${p.iterations === 1 ? "pass" : "passes"}`;
+      return p.exit && p.exit !== "normal"
+        ? `loop ends after ${passes} (${p.exit})`
+        : `loop ends after ${passes}`;
+    }
     case "FUNCTION_ENTERED": {
       const args = Object.entries((p.args ?? {}) as Record<string, EncodedValue>)
         .map(([k, v]) => `${k}=${preview(v, 16)}`)
@@ -133,7 +218,11 @@ export function summarize(ev: AsEvent): string {
     case "FUNCTION_RETURNED":
       return `return ${preview(p.value)}`;
     case "FUNCTION_EXITED":
-      return `exit ${p.name ?? ""} (${p.reason})`;
+      // "(return)" on every exit was the engine talking to itself; only an
+      // unusual way out -- an exception -- is worth saying.
+      return p.reason && p.reason !== "return"
+        ? `leave ${p.name ?? ""}() (${p.reason})`
+        : `leave ${p.name ?? ""}()`;
     case "EXPRESSION_EVALUATED": {
       const ops = (p.operands ?? []) as EncodedValue[];
       if (p.op && ops.length === 2) {
@@ -144,7 +233,8 @@ export function summarize(ev: AsEvent): string {
     case "OBJECT_MUTATED":
       return `${p.name ?? p.ref}.${p.op}(…)`;
     case "OBJECT_CREATED":
-      return `new ${p.kind} ${p.ref}`;
+      // Not the heap id ("h7"), which names nothing the reader can see.
+      return `new ${p.kind}`;
     case "STDOUT_WRITE":
       return "print " + String(p.text ?? "").replace(/\n+$/, "").slice(0, 60);
     case "EXCEPTION_RAISED":
@@ -154,9 +244,9 @@ export function summarize(ev: AsEvent): string {
     case "PROGRAM_STARTED":
       return "program started";
     case "PROGRAM_FINISHED":
-      return `program finished (${p.status})`;
+      return p.status === "ok" ? "program finished" : `program stopped (${String(p.status).replace(/_/g, " ")})`;
     case "BUDGET_EXCEEDED":
-      return `budget exceeded: ${p.reason}`;
+      return `stopped: ${p.reason}`;
     case "INSTRUMENTATION_SKIPPED":
       return `reduced detail: ${p.reason}`;
     case "ALGORITHM_EVENT":

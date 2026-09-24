@@ -9,8 +9,7 @@ PLUGIN = AlgorithmPlugin(
     name="Quick Sort",
     category="sorting",
     description=(
-                "Partition around a pivot, then sort each side. In-place, and the "
-        "swaps in the partition step are recovered by the swap lifter. "
+        "Pick a pivot, partition the list around it, then sort each side the same way."
     ),
     entry="quick_sort",
     inputs=[

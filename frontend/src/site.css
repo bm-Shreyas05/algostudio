@@ -39,6 +39,8 @@ body {
 
 code, pre, .mono {
   font-family: "JetBrains Mono", "Cascadia Code", ui-monospace, Consolas, monospace;
+  /* Show `<=` as typed, not as a ≤ ligature (see styles.css). */
+  font-feature-settings: "liga" 0, "calt" 0;
 }
 
 /* Every interactive element gets a focus ring that is visible against the

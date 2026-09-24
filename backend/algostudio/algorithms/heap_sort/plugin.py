@@ -9,8 +9,7 @@ PLUGIN = AlgorithmPlugin(
     name="Heap Sort",
     category="sorting",
     description=(
-                "Build a max-heap in place, then repeatedly swap the root to the end "
-        "and sift down. The heap detector picks up the array's structure. "
+        "Build a max-heap in place, then repeatedly move the largest item to the end and restore the heap."
     ),
     entry="heap_sort",
     inputs=[

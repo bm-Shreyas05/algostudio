@@ -160,3 +160,19 @@ def install(allowed_modules: Sequence[str] | None = None) -> RestrictedImporter:
     importer = RestrictedImporter(allowed_modules or DEFAULT_ALLOWED_MODULES)
     sys.meta_path.insert(0, importer)
     return importer
+
+
+def uninstall(importer: RestrictedImporter) -> None:
+    """Remove a restriction installed by ``install``.
+
+    For years of this module's life nothing called this, and on the server
+    nothing needed to: the sandbox child is a throwaway process, so the hook
+    died with it. In the browser the user's program and the engine share one
+    interpreter. The hook outlived the program it was guarding and then
+    refused the engine's own imports -- the tutor failed with
+    "'algostudio.ai' is not available" after the first run of anything.
+    """
+    try:
+        sys.meta_path.remove(importer)
+    except ValueError:
+        pass

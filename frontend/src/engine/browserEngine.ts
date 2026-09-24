@@ -1,4 +1,4 @@
-import type { AsEvent, ViewDescriptor } from "../api/types";
+import type { AIAnswer, AsEvent, ViewDescriptor } from "../api/types";
 
 /**
  * The execution engine, running in this tab instead of on the server.
@@ -42,6 +42,17 @@ export interface BrowserRunResult {
 export interface BrowserEngine {
   run(source: string, granularity: string): BrowserRunResult;
   views(step: number): ViewDescriptor[];
+  /** The tutor, answered from the run held in this tab. */
+  ask(step: number, mode: string, question: string, variable: string): AIAnswer;
+}
+
+/**
+ * The engine instance, if it has already been loaded -- without starting a
+ * load. The tutor uses this: asking about a browser run only makes sense once
+ * that run exists, and by then the engine is necessarily loaded.
+ */
+export function loadedBrowserEngine(): Promise<BrowserEngine> | null {
+  return enginePromise;
 }
 
 type StatusFn = (status: EngineStatus) => void;
@@ -59,8 +70,8 @@ let enginePromise: Promise<BrowserEngine> | null = null;
 export async function browserEngineAvailable(): Promise<boolean> {
   try {
     const [runtime, bundle] = await Promise.all([
-      fetch("/pyodide/version.json", { method: "GET" }),
-      fetch("/engine/algostudio.zip", { method: "HEAD" }),
+      fetch("/pyodide/version.json", { method: "GET", cache: "no-cache" }),
+      fetch("/engine/algostudio.zip", { method: "HEAD", cache: "no-cache" }),
     ]);
     return runtime.ok && bundle.ok;
   } catch {
@@ -83,7 +94,9 @@ export function getBrowserEngine(onStatus: StatusFn = () => {}): Promise<Browser
 async function load(onStatus: StatusFn): Promise<BrowserEngine> {
   onStatus({ stage: "downloading", message: "Downloading the Python runtime (~5 MB)…" });
 
-  const version = await fetch("/pyodide/version.json").then((r) => r.json());
+  // Both are revalidated rather than trusted from cache: they change with a
+  // deploy while keeping their names (see _RevalidatedStatic in api/app.py).
+  const version = await fetch("/pyodide/version.json", { cache: "no-cache" }).then((r) => r.json());
   const indexURL: string = version.indexURL;
 
   // Imported at runtime from our own origin — deliberately not from a CDN,
@@ -100,7 +113,7 @@ async function load(onStatus: StatusFn): Promise<BrowserEngine> {
   });
 
   onStatus({ stage: "unpacking", message: "Loading the AlgoStudio engine…" });
-  const bundle = await fetch("/engine/algostudio.zip").then((r) => r.arrayBuffer());
+  const bundle = await fetch("/engine/algostudio.zip", { cache: "no-cache" }).then((r) => r.arrayBuffer());
   pyodide.unpackArchive(bundle, "zip");
 
   const engine = pyodide.pyimport("algostudio.browser.engine");
@@ -113,6 +126,9 @@ async function load(onStatus: StatusFn): Promise<BrowserEngine> {
     },
     views(step: number): ViewDescriptor[] {
       return JSON.parse(engine.views(step));
+    },
+    ask(step: number, mode: string, question: string, variable: string): AIAnswer {
+      return JSON.parse(engine.ask(step, mode, question, variable));
     },
   };
 }

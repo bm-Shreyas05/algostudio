@@ -14,6 +14,7 @@ It earns its place three times over:
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from ..core.events import EventType, preview, summarize
@@ -138,16 +139,29 @@ def _explain_algorithm(ctx: AIContext) -> str:
     functions = ctx.structure.get("functions", [])
     loops = ctx.structure.get("loops", [])
     recursive = [f["name"] for f in functions if f.get("recursive")]
-    parts = [
-        f"This program defines {len(functions)} function(s) and "
-        f"{len(loops)} loop(s), with a maximum loop nesting of "
-        f"{ctx.structure.get('max_loop_depth', 0)}."
-    ]
+    depth = ctx.structure.get("max_loop_depth", 0)
+
+    # Written as sentences a person would say. It used to read "defines 0
+    # function(s) and 1 loop(s)" -- accurate, and plainly machine output.
+    def count(n: int, one: str, many: str) -> str:
+        return {0: f"no {many}", 1: f"one {one}"}.get(n, f"{n} {many}")
+
+    names = [f"`{f['name']}`" for f in functions][:4]
+    what = count(len(functions), "function", "functions")
+    if names:
+        what += " (" + ", ".join(names) + ")"
+    parts = [f"This program defines {what} and has {count(len(loops), 'loop', 'loops')}."]
+    if depth > 1:
+        parts.append(
+            f"Some loops sit inside others, {depth} deep -- the usual sign that the "
+            f"work grows faster than the size of the input."
+        )
     if recursive:
-        parts.append("Recursive: " + ", ".join(recursive) + ".")
+        who = ", ".join(f"`{name}`" for name in recursive)
+        parts.append(f"{who} {'calls itself' if len(recursive) == 1 else 'call themselves'} (recursion).")
     structures = ctx.structure.get("data_structures") or []
     if structures:
-        parts.append("It builds: " + ", ".join(structures) + ".")
+        parts.append("It works with: " + ", ".join(structures) + ".")
     return " ".join(parts)
 
 
@@ -173,14 +187,47 @@ def _complexity(ctx: AIContext) -> str:
 
 
 def _quiz(ctx: AIContext) -> str:
+    """A prediction to make, then check by stepping -- never the answer too.
+
+    It used to finish with "(Step forward to check -- it is <value>.)", which
+    is a question that answers itself. The value is one glance away in the
+    Variables panel for anyone who wants it; the point of asking is to commit
+    to a guess first. It also picked the *first* local, which in most programs
+    is the whole input list -- "what is arr?" -- so it now prefers a plain
+    value: a counter, an index, a flag.
+    """
+    # Some steps are not on a line of the user's program at all -- between
+    # statements, or inside the runtime -- and asking "just before `` runs" on
+    # line 657 of a twenty-line program is nonsense. explain_line has always
+    # guarded against this; the quiz did not.
+    if not ctx.statement:
+        return (
+            "Predict before you look: which line will run next, and what will "
+            "it change? Decide, then step forward to check."
+        )
     frame = ctx.frames[-1] if ctx.frames else None
     if frame and frame["locals"]:
-        name, value = next(iter(frame["locals"].items()))
+        containers = ("list", "dict", "set", "tuple", "deque", "object")
+        candidates = list(frame["locals"].items())
+        scalar = [
+            (name, value) for name, value in candidates
+            if not str(value).startswith(containers)
+        ]
+        # Best of all: a plain value this very line uses. `n` in bubble sort is
+        # a scalar too, but it never changes, so predicting it teaches nothing;
+        # `j` in `if arr[j] > arr[j + 1]` is the one worth thinking about.
+        words = set(re.findall(r"[A-Za-z_]\w*", ctx.statement or ""))
+        in_line = [(name, value) for name, value in scalar if name in words]
+        name, _value = (in_line or scalar or candidates)[0]
         return (
-            f"At line {ctx.current_line}, just before `{ctx.statement}` runs: "
-            f"what is the value of `{name}`? (Step forward to check -- it is {value}.)"
+            f"Predict before you look: at line {ctx.current_line}, just before "
+            f"`{ctx.statement}` runs, what is the value of `{name}`? "
+            f"Decide on an answer, then check it in the Variables panel."
         )
-    return f"What will line {ctx.current_line} do next? Step forward to find out."
+    return (
+        f"Predict before you look: what will line {ctx.current_line} do next? "
+        f"Decide, then step forward to check."
+    )
 
 
 def _simpler(ctx: AIContext) -> str:

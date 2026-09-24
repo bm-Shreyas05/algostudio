@@ -26,6 +26,8 @@ const PATHS = {
   search: "M8.5 14a5.5 5.5 0 1 0 0-11 5.5 5.5 0 0 0 0 11ZM13 13l4 4",
   chevron: "M5.5 8 10 12.5 14.5 8",
   lock: "M6 9V7a4 4 0 0 1 8 0v2M5 9h10v8H5z",
+  // A staircase: how far each step moves. Not the gear, which is Settings.
+  steps: "M3 16h4v-4h4V8h4V4h2",
 } as const;
 
 export type IconName = keyof typeof PATHS | "play" | "pause";

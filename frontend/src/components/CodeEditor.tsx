@@ -1,4 +1,4 @@
-import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { highlightHtml } from "../lib/highlight";
 
 interface Props {
@@ -7,6 +7,9 @@ interface Props {
   /** Called on Ctrl/Cmd+Enter: the shortcut every playground uses for Run. */
   onRun?: () => void;
   label?: string;
+  /** Put the caret in the editor once, e.g. after "Write your own code". */
+  focusRequested?: boolean;
+  onFocusHandled?: () => void;
 }
 
 const INDENT = "    ";
@@ -25,7 +28,9 @@ const INDENT = "    ";
  * it: after Escape, the next Tab moves focus on as usual. The editor says so in
  * its accessible description rather than leaving it to be discovered.
  */
-export function CodeEditor({ value, onChange, onRun, label = "Python source" }: Props) {
+export function CodeEditor({
+  value, onChange, onRun, label = "Python source", focusRequested, onFocusHandled,
+}: Props) {
   const textRef = useRef<HTMLTextAreaElement>(null);
   const preRef = useRef<HTMLPreElement>(null);
   const gutterRef = useRef<HTMLDivElement>(null);
@@ -47,6 +52,14 @@ export function CodeEditor({ value, onChange, onRun, label = "Python source" }: 
   }, []);
 
   useLayoutEffect(syncScroll, [value, syncScroll]);
+
+  // A request, acknowledged once handled: focusing on every mount instead
+  // would pop the phone keyboard up each time the Code tab was opened.
+  useEffect(() => {
+    if (!focusRequested) return;
+    textRef.current?.focus();
+    onFocusHandled?.();
+  }, [focusRequested, onFocusHandled]);
 
   /** Replace the current selection, keeping undo history where possible. */
   const replaceSelection = (text: string, selectStart: number, selectEnd: number) => {

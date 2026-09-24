@@ -18,6 +18,7 @@ the same graph view as the packaged one.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
@@ -117,6 +118,19 @@ class AlgorithmPlugin:
         provided = provided or {}
         return {f.name: f.validate(provided.get(f.name)) for f in self.inputs}
 
+    def example_call(self) -> str:
+        """The call the catalogue makes, as one line of Python.
+
+        The packaged source only *defines* the algorithm; the harness calls it
+        with the default inputs. So a visitor who opened one in the editor and
+        pressed Run recorded a program that defined a function and stopped.
+        Appending this line makes the edited copy a whole program that does
+        what the catalogue did -- and shows where to change the input.
+        """
+        bound = self.bind_inputs(None)
+        args = ", ".join(f"{name}={_literal(value)}" for name, value in bound.items())
+        return f"{self.entry}({args})"
+
     def to_dict(self, include_source: bool = False) -> dict[str, Any]:
         d: dict[str, Any] = {
             "id": self.id, "name": self.name, "category": self.category,
@@ -132,4 +146,23 @@ class AlgorithmPlugin:
         if include_source:
             d["source"] = self.source
             d["explanation"] = self.explanation
+            d["example_call"] = self.example_call()
         return d
+
+
+def _literal(value: Any) -> str:
+    """Python source for a default input.
+
+    ``repr`` is right for everything a plugin default can hold except the
+    infinities, whose repr (``inf``) is not a name Python knows.
+    """
+    if isinstance(value, float) and math.isinf(value):
+        return "float('inf')" if value > 0 else "float('-inf')"
+    if isinstance(value, list):
+        return "[" + ", ".join(_literal(v) for v in value) + "]"
+    if isinstance(value, tuple):
+        inner = ", ".join(_literal(v) for v in value)
+        return f"({inner},)" if len(value) == 1 else f"({inner})"
+    if isinstance(value, dict):
+        return "{" + ", ".join(f"{_literal(k)}: {_literal(v)}" for k, v in value.items()) + "}"
+    return repr(value)

@@ -28,13 +28,17 @@ export function ArrayView({ object, annotations }: ViewProps) {
   const inRegion = (index: number) =>
     regions.some((r) => index >= (r.lo ?? 0) && index <= (r.hi ?? -1));
 
+  // Short lists get room to breathe; long ones stay compact enough to scan.
+  const size = items.length <= 12 ? " size-l" : items.length <= 24 ? " size-m" : "";
+
   return (
-    <div className="view array-view">
+    <div className={`view array-view${size}`}>
       <div className="array-cells">
         {items.map((value, index) => {
           const flash = flashes.get(index);
+          // A fraction of the bar's maximum height, which the CSS sets per size.
           const height = numeric
-            ? Math.max(4, (Math.abs(numbers[index]) / max) * 46)
+            ? `max(4px, calc(var(--bar-max) * ${(Math.abs(numbers[index]) / max).toFixed(3)}))`
             : 0;
           return (
             <div

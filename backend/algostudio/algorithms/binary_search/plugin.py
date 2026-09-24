@@ -9,9 +9,7 @@ PLUGIN = AlgorithmPlugin(
     name="Binary Search",
     category="search",
     description=(
-        "Find a target in a sorted array by repeatedly halving the search "
-        "window. Annotated with algo.pointer/algo.region so the array view "
-        "shows low, mid and high explicitly."
+        "Find a target in a sorted list by repeatedly halving the range it could be in."
     ),
     entry="binary_search",
     inputs=[

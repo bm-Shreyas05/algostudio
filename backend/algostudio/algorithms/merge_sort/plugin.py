@@ -9,9 +9,7 @@ PLUGIN = AlgorithmPlugin(
     name="Merge Sort",
     category="sorting",
     description=(
-        "Recursively split the array, sort each half, and merge. Deliberately "
-        "un-annotated: the call tree and the sub-array views are derived "
-        "entirely from generic function and container events."
+        "Split the list in half, sort each half recursively, then merge the two sorted halves."
     ),
     entry="merge_sort",
     inputs=[

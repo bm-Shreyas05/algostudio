@@ -32,21 +32,20 @@ OUT = ROOT.parent / "frontend" / "public" / "engine" / "algostudio.zip"
 
 #: The client pipeline: analyse -> execute -> lift -> reduce -> analyse -> views.
 INCLUDE = ("core", "languages", "runtime", "lifters", "state", "shapes",
-           "analytics", "store", "browser")
+           "analytics", "store", "browser", "ai")
 
 #: Excluded on purpose, and it is worth being explicit about why.
 EXCLUDE_NOTE = {
     "api": "HTTP layer; the browser calls the engine directly",
     "services": "composition root for the server, with a database attached",
     "sandbox": "the tab is the boundary; shipping this would imply otherwise",
-    "ai": "needs a provider and a server-side key",
     "plugins": "bundled algorithms still run on the server",
     "inputs": "generators are a server-side convenience",
     "analysis": "static analysis is only used by the /analyze endpoint",
 }
 
 #: store/ is included only for eventlog; db.py would drag in sqlite3.
-SKIP_FILES = {"store/db.py"}
+SKIP_FILES = {"store/db.py", "ai/clients.py"}
 
 
 def collect() -> list[tuple[Path, str]]:

@@ -12,4 +12,4 @@ That is what makes the public deployment able to offer arbitrary code while
 execute anything it did not ship. See docs/21-pyodide-spike.md.
 """
 
-from .engine import analytics, meta, run, views  # noqa: F401
+from .engine import analytics, ask, meta, run, views  # noqa: F401

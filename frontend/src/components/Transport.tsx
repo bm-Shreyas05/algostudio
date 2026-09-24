@@ -1,13 +1,14 @@
 import type { StepMode } from "../store/useExecution";
 import { Icon } from "./Icon";
+import { Popover } from "./Popover";
 
 /**
  * The playback bar.
  *
- * Laid out in the order someone reaches for things: the big controls that move
- * through time, then where you are, then how playback behaves, then the
- * debugger's function-level stepping -- which a first-time visitor rarely
- * needs, so it comes last and is labelled rather than symbolised.
+ * Only what everyone uses: move through time, see where you are, set the
+ * speed. How far a step moves, and the debugger's step into / over / out, are
+ * one labelled menu away -- they matter when tracing your own functions and
+ * not at all to someone watching a sort.
  *
  * It used to be eight unlabelled glyphs. Their meaning lived only in hover
  * tooltips, which do not exist on a touch screen, so on a phone the controls
@@ -115,18 +116,6 @@ export function Transport({
       </div>
 
       <div className="t-group t-options">
-        <label className="ctl">
-          <span>Step by</span>
-          <select
-            value={stepMode}
-            onChange={(e) => onStepMode(e.target.value as StepMode)}
-            disabled={!enabled}
-          >
-            <option value="line">Line</option>
-            <option value="operation">Operation</option>
-            <option value="event">Event</option>
-          </select>
-        </label>
         <label className="ctl speed">
           <span>Speed</span>
           <input
@@ -135,41 +124,61 @@ export function Transport({
             max={60}
             value={speed}
             onChange={(e) => onSpeed(+e.target.value)}
+            aria-label="Playback speed"
             aria-valuetext={`${speed} steps per second`}
           />
           <span className="speed-value">{speed}/s</span>
         </label>
       </div>
 
-      <div className="t-group t-debug" role="group" aria-label="Step through functions">
-        <button
-          className="t-btn t-small"
-          onClick={onStepInto}
-          disabled={!enabled}
-          title="Step into the next function call"
-        >
-          <Icon name="into" size={14} />
-          <span className="t-label">Into</span>
-        </button>
-        <button
-          className="t-btn t-small"
-          onClick={onStepOver}
-          disabled={!enabled}
-          title="Step over calls, staying in this function"
-        >
-          <Icon name="over" size={14} />
-          <span className="t-label">Over</span>
-        </button>
-        <button
-          className="t-btn t-small"
-          onClick={onStepOut}
-          disabled={!enabled}
-          title="Run until this function returns"
-        >
-          <Icon name="out" size={14} />
-          <span className="t-label">Out</span>
-        </button>
-      </div>
+      {/* Debugger stepping is a real need when you are tracing your own
+          functions, and no use at all to someone watching a sort. It used to
+          take a third of this bar; now it is one labelled menu away. */}
+      <Popover
+        label="Stepping options"
+        trigger={<span className="t-more"><Icon name="steps" size={15} /><span className="t-label-always">Stepping</span></span>}
+        wide
+      >
+        <div className="pop-section">
+          <div className="pop-title">Each step moves by</div>
+          <div className="seg" role="radiogroup" aria-label="Each step moves by">
+            {(["line", "operation", "event"] as StepMode[]).map((m) => (
+              <label key={m} className={`seg-opt${stepMode === m ? " on" : ""}`}>
+                <input
+                  type="radio"
+                  name="stepmode"
+                  checked={stepMode === m}
+                  onChange={() => onStepMode(m)}
+                />
+                {m === "line" ? "One line" : m === "operation" ? "One change" : "Every event"}
+              </label>
+            ))}
+          </div>
+          <p className="pop-note">
+            {stepMode === "line" ? "Like a debugger: one line of code at a time."
+              : stepMode === "operation" ? "Skips reads; stops only where something changes."
+              : "Everything the engine recorded, including each read."}
+          </p>
+        </div>
+        <div className="pop-section">
+          <div className="pop-title">Move through function calls</div>
+          <div className="t-debug-row">
+            <button className="t-btn t-small" onClick={onStepInto} disabled={!enabled}>
+              <Icon name="into" size={14} />Step into
+            </button>
+            <button className="t-btn t-small" onClick={onStepOver} disabled={!enabled}>
+              <Icon name="over" size={14} />Step over
+            </button>
+            <button className="t-btn t-small" onClick={onStepOut} disabled={!enabled}>
+              <Icon name="out" size={14} />Step out
+            </button>
+          </div>
+          <p className="pop-note">
+            Into enters the next call, over runs it without stopping inside, and
+            out finishes the current function.
+          </p>
+        </div>
+      </Popover>
     </div>
   );
 }

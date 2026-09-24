@@ -7,9 +7,7 @@ PLUGIN = AlgorithmPlugin(
     name="Bubble Sort",
     category="sorting",
     description=(
-        "Repeatedly swap adjacent out-of-order elements. Contains no "
-        "annotations whatsoever: every swap and comparison in the "
-        "visualization was inferred from the raw event stream."
+        "Repeatedly swap neighbouring items that are out of order until the list is sorted."
     ),
     entry="bubble_sort",
     inputs=[

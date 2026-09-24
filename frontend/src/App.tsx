@@ -8,7 +8,7 @@ import { FocusStrip } from "./components/FocusStrip";
 import { Icon } from "./components/Icon";
 import { Popover } from "./components/Popover";
 import {
-  AnalyticsPanel, CallStackPanel, ConsolePanel, TimelinePanel, VariablesPanel,
+  AnalyticsPanel, ConsolePanel, TimelinePanel, VariablesPanel,
 } from "./components/Panels";
 import { SourceView } from "./components/SourceView";
 import { PaneHead, Split } from "./components/Split";
@@ -27,9 +27,23 @@ for i in range(5):
 print("total is", x)
 `;
 
-type RightTab = "variables" | "callstack" | "calltree";
-type BottomTab = "timeline" | "console" | "analytics" | "ai";
-type PaneId = "source" | "canvas" | "inspector" | "bottom";
+/**
+ * Three regions, not four. The old layout gave variables a column of their own,
+ * squeezing the visualization -- the actual product -- into the middle third
+ * of the screen, and put the raw event log underneath everything by default.
+ * Now: the code and everything *about* the run on the left, the picture of the
+ * run on the right, as tall and wide as the window allows.
+ */
+type DetailTab = "variables" | "output" | "explain" | "steps" | "stats";
+type PaneId = "source" | "canvas" | "details";
+
+const DETAIL_TABS: [DetailTab, string][] = [
+  ["variables", "Variables"],
+  ["output", "Output"],
+  ["explain", "Explain"],
+  ["steps", "Steps"],
+  ["stats", "Stats"],
+];
 
 /**
  * The four shown on the empty canvas. Chosen so that each one lands on a
@@ -57,18 +71,34 @@ const GRANULARITY: { id: string; label: string; detail: string }[] = [
  * `n` counts its *fields*, so a binary-tree root read "Tree · 3 items" -- its
  * value, left and right -- on an eight-node tree, which is simply false.
  */
-function sizeLabel(obj: HeapObject | undefined): string {
+function sizeLabel(obj: HeapObject | undefined, view: string): string {
   if (!obj || typeof obj.n !== "number") return "";
   if (!obj.items && !obj.entries) return "";
-  return ` · ${obj.n} ${obj.n === 1 ? "item" : "items"}`;
+  // A list of lists drawn as a grid is counted the way it is drawn.
+  const [one, many] = view === "matrix" ? ["row", "rows"] : ["item", "items"];
+  return ` · ${obj.n} ${obj.n === 1 ? one : many}`;
 }
+
+/** Marks the line "Edit code" appends to a catalogue algorithm, so it is added once. */
+const CALL_NOTE = "# How the catalogue runs it. Change the input, then press Run.";
+
+/**
+ * Highlights that describe a single moment: the pair just compared, the swap,
+ * where `j` pointed. Once the program has finished they describe a moment that
+ * is over, and at the end of a sort they left two cells lit as though the
+ * comparison were still happening. Marks, regions and visited nodes stay:
+ * those describe the result.
+ */
+const FLEETING = new Set([
+  "compare", "highlight", "swap", "relax", "discover", "note",
+  "push", "pop", "enqueue", "dequeue", "pointer",
+]);
 
 /** Tab order on narrow screens: what you look at most, first. */
 const MOBILE_PANES: [PaneId, string][] = [
   ["canvas", "Visual"],
   ["source", "Code"],
-  ["inspector", "Data"],
-  ["bottom", "Timeline"],
+  ["details", "Details"],
 ];
 
 export default function App() {
@@ -78,8 +108,10 @@ export default function App() {
   const [granularity, setGranularity] = useState("standard");
   const [algorithms, setAlgorithms] = useState<AlgorithmPlugin[]>([]);
   const [selectedAlgorithm, setSelectedAlgorithm] = useState("");
-  const [rightTab, setRightTab] = useState<RightTab>("variables");
-  const [bottomTab, setBottomTab] = useState<BottomTab>("timeline");
+  const [exampleCall, setExampleCall] = useState("");
+  const [focusEditor, setFocusEditor] = useState(false);
+  const editorFocused = useCallback(() => setFocusEditor(false), []);
+  const [detailTab, setDetailTab] = useState<DetailTab>("variables");
   const [focusVariable, setFocusVariable] = useState("");
   const [pinned, setPinned] = useState<Record<string, string>>({});
   const [health, setHealth] = useState<Record<string, any> | null>(null);
@@ -135,7 +167,10 @@ export default function App() {
     return null;
   }, [bundle, state.step]);
 
-  const annotations = useMemo(() => liveAnnotations(state), [state]);
+  const annotations = useMemo(() => {
+    const live = liveAnnotations(state);
+    return state.finished_reason ? live.filter((a) => !FLEETING.has(a.kind)) : live;
+  }, [state]);
 
   const branchLine = useMemo(() => {
     if (!bundle || state.step < 0) return null;
@@ -147,7 +182,26 @@ export default function App() {
   }, [bundle, state.step]);
 
   /* ---- run -------------------------------------------------------------- */
+  const loadAlgorithm = useCallback(async (id: string) => {
+    setSelectedAlgorithm(id);
+    if (!id) return;
+    const plugin = await api.algorithm(id);
+    setSource(plugin.source ?? "");
+    setExampleCall(plugin.example_call ?? "");
+    const inputs = Object.fromEntries(plugin.inputs.map((f) => [f.name, f.default]));
+    const result = await exec.runAlgorithm(id, inputs, granularity);
+    if (result) setEditing(false);
+  }, [exec, granularity]);
+
   const doRun = useCallback(async () => {
+    // Showing a catalogue algorithm rather than editing it, Run means "run
+    // this again" -- and that has to be the catalogue's run. The source on
+    // its own only defines the function, so running it as typed code recorded
+    // a def statement and nothing else.
+    if (selectedAlgorithm && (!editing || curated)) {
+      await loadAlgorithm(selectedAlgorithm);
+      return;
+    }
     setSelectedAlgorithm("");
     // Where this executes is the whole security story: runsLocally means the
     // source never leaves the tab.
@@ -155,17 +209,21 @@ export default function App() {
       ? await exec.runLocal(source, granularity)
       : await exec.run(source, granularity);
     if (result) setEditing(false);
-  }, [exec, source, granularity, runsLocally]);
+  }, [exec, source, granularity, runsLocally, selectedAlgorithm, editing, curated, loadAlgorithm]);
 
-  const loadAlgorithm = useCallback(async (id: string) => {
-    setSelectedAlgorithm(id);
-    if (!id) return;
-    const plugin = await api.algorithm(id);
-    setSource(plugin.source ?? "");
-    const inputs = Object.fromEntries(plugin.inputs.map((f) => [f.name, f.default]));
-    const result = await exec.runAlgorithm(id, inputs, granularity);
-    if (result) setEditing(false);
-  }, [exec, granularity]);
+  /**
+   * Open the code in the editor. For a catalogue algorithm, the edit starts
+   * from a whole program: the same source plus the call the catalogue makes,
+   * so pressing Run does what the catalogue did -- and the input is right
+   * there to change.
+   */
+  const startEditing = useCallback(() => {
+    if (selectedAlgorithm && exampleCall && !source.includes(CALL_NOTE)) {
+      setSource(`${source.trimEnd()}\n\n\n${CALL_NOTE}\nprint(${exampleCall})\n`);
+    }
+    setEditing(true);
+    setFocusEditor(true);
+  }, [selectedAlgorithm, exampleCall, source]);
 
   const pickAlgorithm = useCallback((id: string) => {
     setBrowserOpen(false);
@@ -183,6 +241,9 @@ export default function App() {
     setSelectedAlgorithm("");
     setEditing(true);
     setMobilePane("source");
+    // On a wide screen the editor is already showing, so without this the
+    // button appeared to do nothing at all.
+    setFocusEditor(true);
   }, [selectedAlgorithm]);
 
   /* ---- keyboard transport ---------------------------------------------- */
@@ -272,8 +333,30 @@ export default function App() {
   const sourcePane = (
     <section className="pane source">
       <PaneHead
-        title="Source"
-        extra={bundle && <span className="muted">step {state.step} / {lastStep}</span>}
+        title="Code"
+        extra={
+          // Edit lives with the code it edits, not in the global header. And
+          // where the code will run is said here, next to the thing it is
+          // about, rather than as a permanent chip at the top of every screen.
+          <span className="code-head-extra">
+            {editing && !curated ? (
+              <>
+                {runsLocally && (
+                  <span className="engine-note" title="Your code runs in this tab and is never sent to the server">
+                    <Icon name="lock" size={13} /> Runs in your browser
+                  </span>
+                )}
+                <span className="kbd-hint"><kbd>Ctrl</kbd>+<kbd>Enter</kbd> to run</span>
+              </>
+            ) : (
+              canEdit && bundle && (
+                <button type="button" className="btn-small" onClick={startEditing}>
+                  <Icon name="code" size={14} /> Edit code
+                </button>
+              )
+            )}
+          </span>
+        }
         maximized={maximized === "source"}
         onToggleMaximize={toggleMax("source")}
       />
@@ -288,6 +371,8 @@ export default function App() {
         onToggleBreakpoint={exec.toggleBreakpoint}
         branchLine={branchLine}
         onRun={doRun}
+        focusRequested={focusEditor}
+        onFocusHandled={editorFocused}
       />
       {exec.breakpoints.size > 0 && (
         <div className="pane-foot">
@@ -302,7 +387,6 @@ export default function App() {
     <section className="pane canvas">
       <PaneHead
         title="Visualization"
-        extra={<span className="muted">views chosen from runtime structure</span>}
         maximized={maximized === "canvas"}
         onToggleMaximize={toggleMax("canvas")}
       />
@@ -320,9 +404,8 @@ export default function App() {
             <p className="ce-eyebrow">Start here</p>
             <h2 className="ce-title">Pick something to watch run</h2>
             <p className="ce-lede">
-              Each of these lands on a different kind of picture. None of them is
-              drawn by hand — the view is worked out from the shape of the data
-              while the program runs.
+              Each one shows a different kind of picture, worked out from the
+              data as the program runs — nothing is drawn by hand.
             </p>
 
             <div className="featured">
@@ -359,13 +442,6 @@ export default function App() {
               )}
             </div>
 
-            {runsLocally && (
-              <p className="ce-note">
-                <Icon name="lock" size={14} />
-                Code you write runs inside this tab. It is never uploaded, and the
-                server is never asked to execute it.
-              </p>
-            )}
             {curated && (
               <p className="ce-note">
                 This deployment runs the bundled catalogue only — there is no
@@ -399,7 +475,7 @@ export default function App() {
                   title={`${plan.reason} (confidence ${plan.score.toFixed(2)})`}
                 >
                   {VIEW_LABELS[plan.view] ?? plan.view}
-                  {sizeLabel(state.heap[plan.ref])}
+                  {sizeLabel(state.heap[plan.ref], plan.view)}
                 </span>
                 {plan.alternatives.length > 0 && (
                   <select
@@ -430,8 +506,8 @@ export default function App() {
         {bundle && state.call_tree.length > 1 && (
           <div className="view-card">
             <div className="view-head">
-              <strong>call tree</strong>
-              <span className="muted">derived from function events</span>
+              <strong>calls</strong>
+              <span className="muted">who called whom, and what each returned</span>
             </div>
             <CallTreeView state={state} />
           </div>
@@ -440,73 +516,73 @@ export default function App() {
     </section>
   );
 
-  const inspectorPane = (
-    <section className="pane inspector">
-      <div className="pane-head tabs">
-        {(["variables", "callstack", "calltree"] as RightTab[]).map((tab) => (
-          <button key={tab} className={rightTab === tab ? "on" : ""}
-                  onClick={() => setRightTab(tab)}>
-            {tab === "callstack" ? "call stack" : tab}
-          </button>
-        ))}
-        <span className="grow" />
-        <button className="pane-btn" onClick={toggleMax("inspector")}
-                title={maximized === "inspector" ? "restore layout" : "maximize this panel"}>
-          {maximized === "inspector" ? "🗗" : "⛶"}
-        </button>
-      </div>
-      {rightTab === "variables" && (
-        <VariablesPanel state={state} changed={changed} onInspect={inspectVariable} />
-      )}
-      {rightTab === "callstack" && <CallStackPanel state={state} />}
-      {rightTab === "calltree" && (
-        <div className="panel-body"><CallTreeView state={state} /></div>
-      )}
-    </section>
-  );
+  // Output is the one tab with news in it; say how much, so nobody has to go
+  // looking to find out whether the program printed anything.
+  const outputLines = (state.stdout + state.stderr).split(/\r?\n/).filter(Boolean).length;
 
-  const bottomPane = (
-    <section className="pane bottom">
-      <div className="pane-head tabs">
-        {(["timeline", "console", "analytics", "ai"] as BottomTab[]).map((tab) => (
-          <button key={tab} className={bottomTab === tab ? "on" : ""}
-                  onClick={() => setBottomTab(tab)}>
-            {tab === "ai" ? "AI tutor" : tab}
+  const detailsPane = (
+    <section className="pane details">
+      <div className="pane-head tabs" role="tablist" aria-label="About this run">
+        {DETAIL_TABS.map(([tab, label]) => (
+          <button
+            key={tab}
+            role="tab"
+            aria-selected={detailTab === tab}
+            className={detailTab === tab ? "on" : ""}
+            onClick={() => setDetailTab(tab)}
+          >
+            {label}
+            {tab === "output" && outputLines > 0 && <span className="tab-count">{outputLines}</span>}
           </button>
         ))}
-        {focusVariable && bottomTab === "ai" && (
-          <span className="muted">focused on {focusVariable}</span>
-        )}
         <span className="grow" />
-        <button className="pane-btn" onClick={toggleMax("bottom")}
-                title={maximized === "bottom" ? "restore layout" : "maximize this panel"}>
-          {maximized === "bottom" ? "🗗" : "⛶"}
+        <button
+          className="pane-btn pane-maximize"
+          onClick={toggleMax("details")}
+          aria-label={maximized === "details" ? "Restore the layout" : "Maximize this panel"}
+          title={maximized === "details" ? "restore layout" : "maximize this panel"}
+        >
+          {maximized === "details" ? "🗗" : "⛶"}
         </button>
       </div>
-      <div className="bottom-body">
-        {bottomTab === "timeline" && bundle && (
-          <TimelinePanel events={bundle.events} step={state.step} onSeek={exec.seek} />
+      <div className="bottom-body" role="tabpanel">
+        {detailTab === "variables" && (
+          bundle
+            ? <VariablesPanel state={state} changed={changed} onInspect={inspectVariable} />
+            : <p className="tab-empty">Run something to see its variables change, step by step.</p>
         )}
-        {bottomTab === "console" && <ConsolePanel state={state} />}
-        {bottomTab === "analytics" && bundle && (
-          <AnalyticsPanel analytics={bundle.analytics} state={state} />
-        )}
-        {bottomTab === "ai" && (
+        {detailTab === "output" && <ConsolePanel state={state} />}
+        {detailTab === "explain" && (
           <AIPanel
             executionId={bundle?.summary.execution_id ?? null}
             step={state.step}
             focusVariable={focusVariable}
+            local={bundle?.summary.execution_id === "local"}
+            llmAvailable={Boolean(health?.ai?.available)}
           />
         )}
-        {!bundle && bottomTab !== "ai" && bottomTab !== "console" && (
-          <div className="empty pad">Nothing recorded yet.</div>
+        {detailTab === "steps" && (
+          bundle
+            ? <TimelinePanel events={bundle.events} step={state.step} onSeek={exec.seek} />
+            : <p className="tab-empty">Every step of a run is listed here; click one to jump to it.</p>
+        )}
+        {detailTab === "stats" && (
+          bundle
+            ? (
+              <AnalyticsPanel
+                analytics={bundle.analytics}
+                emphasis={plugin?.metrics ?? []}
+                canEdit={canEdit}
+              />
+            )
+            : <p className="tab-empty">Counts of comparisons, swaps and calls appear here after a run.</p>
         )}
       </div>
     </section>
   );
 
   const PANES: Record<PaneId, React.ReactNode> = {
-    source: sourcePane, canvas: canvasPane, inspector: inspectorPane, bottom: bottomPane,
+    source: sourcePane, canvas: canvasPane, details: detailsPane,
   };
 
   return (
@@ -546,8 +622,10 @@ export default function App() {
         <button
           className="primary run-btn"
           onClick={doRun}
-          disabled={exec.busy || curated}
-          title={curated
+          disabled={exec.busy || (curated && !selectedAlgorithm)}
+          title={selectedAlgorithm && (!editing || curated)
+            ? "Run this algorithm again from the start"
+            : curated
             ? "This deployment runs the bundled catalogue only — pick an algorithm"
             : runsLocally
               ? "Run your code in this tab (Ctrl+Enter). It is never sent to the server."
@@ -560,19 +638,12 @@ export default function App() {
               : "Running…"
             : "Run"}
         </button>
-        <button
-          type="button"
-          className="btn-secondary"
-          onClick={() => setEditing((v) => !v)}
-          disabled={!bundle || curated}
-          title={editing ? "Show the recorded trace" : "Go back to editing the source"}
-        >
-          <Icon name="code" />
-          <span className="hide-narrow">{editing ? "View trace" : "Edit code"}</span>
-        </button>
-
         <div className="grow" />
 
+        {/* Only what needs attention. A green "Finished" and an event count on
+            every successful run were noise -- success is the normal case, and
+            "events" is the engine's word, not the user's. A run that failed,
+            timed out or hit its budget still says so, prominently. */}
         <div className="status" aria-live="polite">
           {maximized && (
             <button className="chip-btn on" onClick={() => setMaximized(null)}
@@ -580,33 +651,16 @@ export default function App() {
               Restore layout
             </button>
           )}
-          {bundle && (
-            <span className="run-summary">
-              <span className={`badge ${bundle.summary.status}`}>
-                {bundle.summary.status === "ok" ? "Finished" : bundle.summary.status.replace("_", " ")}
-              </span>
-              <span className="hide-narrow">
-                {bundle.summary.event_count.toLocaleString()} events
-              </span>
+          {bundle && bundle.summary.status !== "ok" && (
+            <span className={`badge ${bundle.summary.status}`}>
+              {bundle.summary.status === "budget_exceeded"
+                ? "Stopped: too many steps"
+                : bundle.summary.status === "timeout"
+                  ? "Stopped: took too long"
+                  : "Ended with an error"}
             </span>
           )}
-          {health && (
-            <span
-              className={`engine-chip${runsLocally ? " local" : ""}`}
-              title={
-                runsLocally
-                  ? "Your code runs in this tab and is never sent to the server"
-                  : `sandbox: ${health.sandbox_mode}`
-              }
-            >
-              {runsLocally && <Icon name="lock" size={13} />}
-              {runsLocally
-                ? "Runs in your browser"
-                : curated
-                  ? "Catalogue only"
-                  : `${health.sandbox_mode} sandbox`}
-            </span>
-          )}
+          {curated && <span className="engine-chip">Catalogue only</span>}
         </div>
 
         <Popover label="Settings" trigger={<Icon name="settings" size={18} />}>
@@ -656,45 +710,42 @@ export default function App() {
         </Popover>
       </header>
 
-      <Transport
-        step={state.step}
-        lastStep={lastStep}
-        playing={exec.transport.playing}
-        speed={exec.transport.speed}
-        stepMode={exec.stepMode}
-        enabled={Boolean(bundle)}
-        onSeek={exec.seek}
-        onStepBack={exec.stepBack}
-        onStepForward={exec.stepForward}
-        onTogglePlay={() => exec.setTransport((t) => ({ ...t, playing: !t.playing }))}
-        onReplay={exec.replay}
-        onJumpEnd={() => exec.seek(lastStep)}
-        onStepOver={() => exec.jump((tl, st) => tl.stepOver(st))}
-        onStepInto={() => exec.jump((tl, st) => tl.stepInto(st))}
-        onStepOut={() => exec.jump((tl, st) => tl.stepOut(st))}
-        onSpeed={(speed) => exec.setTransport((t) => ({ ...t, speed }))}
-        onStepMode={exec.setStepMode}
-      />
+      {/* Only once there is something to play. Before that it was a row of
+          greyed-out buttons -- three rows on a phone, a third of the screen --
+          offering nothing. */}
+      {bundle && (
+        <Transport
+          step={state.step}
+          lastStep={lastStep}
+          playing={exec.transport.playing}
+          speed={exec.transport.speed}
+          stepMode={exec.stepMode}
+          enabled={Boolean(bundle)}
+          onSeek={exec.seek}
+          onStepBack={exec.stepBack}
+          onStepForward={exec.stepForward}
+          onTogglePlay={() => exec.setTransport((t) => ({ ...t, playing: !t.playing }))}
+          onReplay={exec.replay}
+          onJumpEnd={() => exec.seek(lastStep)}
+          onStepOver={() => exec.jump((tl, st) => tl.stepOver(st))}
+          onStepInto={() => exec.jump((tl, st) => tl.stepInto(st))}
+          onStepOut={() => exec.jump((tl, st) => tl.stepOut(st))}
+          onSpeed={(speed) => exec.setTransport((t) => ({ ...t, speed }))}
+          onStepMode={exec.setStepMode}
+        />
+      )}
 
       {plugin && (
+        // What it does and what it costs. The name is already in the library
+        // button directly above; the "annotated / semantics inferred" badge
+        // described how the plugin was written, which no learner asked.
         <div className="algo-strip">
-          <strong>{plugin.name}</strong>
           <span className="muted">{plugin.description}</span>
           {plugin.complexity && (
-            <span className="cx" title="as stated by the plugin author">
+            <span className="cx" title="Time and extra space this algorithm needs">
               {plugin.complexity.time} time · {plugin.complexity.space} space
             </span>
           )}
-          <span
-            className={`origin-badge ${plugin.annotated ? "annotated" : "inferred"}`}
-            title={
-              plugin.annotated
-                ? "This source calls the algo.* API, so its swaps/compares/visits are declared explicitly."
-                : "This source has no annotations. Its swaps, comparisons and visits are recovered from the raw event stream by the lifters."
-            }
-          >
-            {plugin.annotated ? "annotated" : "semantics inferred"}
-          </span>
         </div>
       )}
 
@@ -758,28 +809,27 @@ export default function App() {
       ) : maximized ? (
         <div id="workspace" className="workspace maximized">{PANES[maximized]}</div>
       ) : (
-        // v2: the redesign gives the visualization the most room by default.
-        // Saved v1 layouts are left alone rather than migrated -- they were
-        // sized for the old chrome, and applying them would hide the change.
+        // v3: two columns. Code above the details of the run on the left, the
+        // visualization full-height on the right. A new storage key, because
+        // a v2 layout saved three column widths and there are now two.
         <Split
           id="workspace"
-          direction="column"
-          storageKey="algostudio.layout.v2.rows"
-          initial={[70, 30]}
-          minPx={120}
+          direction="row"
+          storageKey="algostudio.layout.v3.cols"
+          initial={[40, 60]}
+          minPx={300}
           className="workspace"
         >
           <Split
-            direction="row"
-            storageKey="algostudio.layout.v2.cols"
-            initial={[28, 50, 22]}
-            minPx={180}
+            direction="column"
+            storageKey="algostudio.layout.v3.left"
+            initial={[58, 42]}
+            minPx={140}
           >
             {sourcePane}
-            {canvasPane}
-            {inspectorPane}
+            {detailsPane}
           </Split>
-          {bottomPane}
+          {canvasPane}
         </Split>
       )}
 

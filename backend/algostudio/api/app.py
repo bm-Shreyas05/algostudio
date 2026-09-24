@@ -493,6 +493,13 @@ class _PrecompressedStatic(StaticFiles):
     """
 
     async def get_response(self, path: str, scope) -> Response:
+        # version.json is the *pointer* to the current runtime, not part of a
+        # versioned directory. Cached immutable, an upgrade would never reach a
+        # returning visitor: they would follow the old pointer forever.
+        if path.replace("\\", "/").lstrip("/") == "version.json":
+            response = await super().get_response(path, scope)
+            response.headers["Cache-Control"] = "no-cache"
+            return response
         headers = Headers(scope=scope)
         if "gzip" in headers.get("accept-encoding", ""):
             try:
@@ -511,6 +518,24 @@ class _PrecompressedStatic(StaticFiles):
         response = await super().get_response(path, scope)
         response.headers["Cache-Control"] = IMMUTABLE
         response.headers["Vary"] = "Accept-Encoding"
+        return response
+
+
+class _RevalidatedStatic(StaticFiles):
+    """Static files that must be checked for a newer copy on every use.
+
+    For the engine bundle: its name never changes but its contents change with
+    every backend deploy. Served with no Cache-Control at all -- as it was --
+    browsers apply *heuristic* freshness from Last-Modified and keep reusing a
+    stale copy, so a returning visitor ran last week's engine against this
+    week's interface. The concrete failure was the tutor calling an `ask`
+    function the cached bundle did not have yet. `no-cache` means "revalidate
+    first", not "never store": the ETag makes an unchanged bundle a 304.
+    """
+
+    def file_response(self, *args, **kwargs) -> Response:
+        response = super().file_response(*args, **kwargs)
+        response.headers["Cache-Control"] = "no-cache"
         return response
 
 
@@ -566,9 +591,9 @@ def _mount_frontend(app: FastAPI) -> None:
                   name="pyodide")
     engine = dist / "engine"
     if engine.is_dir():
-        # Not immutable: this zip changes whenever the backend does, and it is
-        # 83 KB, so revalidating it is cheap and being stale is not.
-        app.mount("/engine", StaticFiles(directory=str(engine)), name="engine")
+        # Not immutable: this zip changes whenever the backend does. It is
+        # ~100 KB, so revalidating it is cheap and being stale is not.
+        app.mount("/engine", _RevalidatedStatic(directory=str(engine)), name="engine")
 
     for url, filename in ROUTES.items():
         if not (dist / filename).is_file():

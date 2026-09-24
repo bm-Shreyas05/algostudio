@@ -106,7 +106,7 @@ def _run(job: dict, recorder: Recorder) -> tuple[str, dict | None]:
 
     # --- harden -------------------------------------------------------------
     stdin_proxy = StdinProxy(recorder, job.get("stdin", ""))
-    policy.install(job.get("allowed_modules") or None)
+    importer = policy.install(job.get("allowed_modules") or None)
     safe_builtins = policy.build_safe_builtins(stdin_proxy=stdin_proxy)
 
     probe_ns = probe.install(recorder)
@@ -163,6 +163,11 @@ def _run(job: dict, recorder: Recorder) -> tuple[str, dict | None]:
     except BaseException as exc:
         _record_exception(recorder, exc)
         return "error", _describe(exc)
+    finally:
+        # The restriction guards the user's program, not the process. When
+        # this runs in the same interpreter as the engine -- in the browser,
+        # in the tests -- leaving it installed breaks every later import.
+        policy.uninstall(importer)
     return "ok", None
 
 

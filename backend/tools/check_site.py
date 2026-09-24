@@ -277,6 +277,25 @@ def main() -> int:
         if "immutable" not in response.headers.get("cache-control", ""):
             warn("/assets", "hashed assets are not marked immutable")
 
+    # The in-browser engine: files whose *name* is stable but whose contents
+    # change with a deploy must revalidate, or a returning visitor runs a stale
+    # engine against a new interface. This is not hypothetical -- the engine
+    # bundle shipped with no Cache-Control, and the tutor then called a
+    # function the cached bundle did not have.
+    for path in ("/engine/algostudio.zip", "/pyodide/version.json"):
+        response = client.get(path)
+        if response.status_code == 404:
+            continue                      # a build without the browser engine
+        cache = response.headers.get("cache-control", "")
+        if "no-cache" not in cache:
+            fail(path, f"must revalidate on every use (Cache-Control: no-cache), got {cache or 'none'!r}")
+    version = client.get("/pyodide/version.json")
+    if version.status_code == 200:
+        wasm = f"{version.json()['indexURL']}pyodide.asm.wasm"
+        cache = client.get(wasm, headers={"accept-encoding": "gzip"}).headers.get("cache-control", "")
+        if "immutable" not in cache:
+            fail(wasm, "a versioned runtime file should be cached immutable")
+
     # ---------------------------------------------------------- report
     for message in warnings:
         print(f"[warn] {message}")

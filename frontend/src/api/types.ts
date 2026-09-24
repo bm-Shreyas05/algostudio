@@ -222,6 +222,8 @@ export interface AlgorithmPlugin {
   annotated: boolean;
   source?: string;
   explanation?: string;
+  /** The call the catalogue makes, e.g. `bubble_sort(arr=[5, 2, 9])`. */
+  example_call?: string;
 }
 
 export interface Claim {

@@ -71,9 +71,24 @@ export function useExecution() {
   const timeline = timelineRef.current;
 
   const publish = useCallback((next: ExecutionState) => {
-    // The reducer mutates in place for speed; a new wrapper object is what
-    // tells React the cursor moved.
-    setState({ ...next });
+    // The reducer mutates in place for speed, so the state has to be re-wrapped
+    // before React sees it. Re-wrapping only the top level was not enough: the
+    // containers inside kept their identity while their contents changed, and
+    // every useMemo keyed on one of them -- state.call_tree, state.frames,
+    // state.heap, state.counters -- concluded nothing had happened. The call
+    // tree of fact(4) stopped at its second call; the counters in the headline
+    // froze. Copying the containers (not their contents) costs a few shallow
+    // copies per step and makes every change visible to every view.
+    setState({
+      ...next,
+      frames: next.frames.slice(),
+      retired: { ...next.retired },
+      heap: { ...next.heap },
+      loops: { ...next.loops },
+      annotations: { ...next.annotations },
+      counters: { ...next.counters },
+      call_tree: next.call_tree.slice(),
+    });
   }, []);
 
   const load = useCallback(async (executionId: string) => {

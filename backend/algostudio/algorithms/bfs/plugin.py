@@ -19,9 +19,7 @@ PLUGIN = AlgorithmPlugin(
     name="Breadth-First Search",
     category="graph",
     description=(
-        "Explore a graph level by level using a queue. The graph view is "
-        "chosen because the input is a dict whose value elements are its own "
-        "keys -- no graph-specific code is involved."
+        "Explore a graph level by level with a queue, visiting every node reachable from the start."
     ),
     entry="bfs",
     inputs=[

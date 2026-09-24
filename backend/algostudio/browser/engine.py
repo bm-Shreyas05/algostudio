@@ -161,5 +161,53 @@ def analytics() -> str:
     return json.dumps(_current.analytics if _current else {})
 
 
+def ask(step: int, mode: str = "explain_line", question: str = "",
+        variable: str = "") -> str:
+    """The tutor, for a run that only ever existed in this tab.
+
+    The panel used to send every question to the server, keyed by execution id
+    -- and a run of the visitor's own code has no server-side id, only "local".
+    So the tutor answered every question about your own code with a 404.
+
+    This composes the same three pieces the server's AIService does -- the
+    context builder, the deterministic template explainer and the claim
+    verifier -- over the timeline already held in memory, so an answer about a
+    browser run is built exactly the way an answer about a server run is.
+    There is no language model here: no key is shipped to a browser.
+    """
+    from ..ai import modes, template
+    from ..ai.context import ContextBuilder
+    from ..ai.verifier import ClaimVerifier
+
+    if _current is None:
+        return json.dumps({"answer": "Run a program first.", "provider": "template",
+                           "model": "", "grounding": None, "notice": "",
+                           "cached": False, "mode": mode, "step": step})
+
+    mode = mode if mode in modes.MODES else modes.DEFAULT_MODE
+    question = (question or modes.get(mode).instruction).strip()[:1000]
+    source = _current.meta.get("source", "")
+    builder = ContextBuilder(
+        _current.timeline, source, _current.meta.get("structure"), None
+    )
+    focus = {"variable": variable} if variable else {}
+    ctx = builder.build(step, question, mode, focus, analytics=_current.analytics)
+    answer = template.explain(ctx)
+    verifier = ClaimVerifier(
+        _current.timeline.state_at(step), _current.analytics,
+        source_lines=len(source.splitlines()),
+    )
+    return json.dumps({
+        "answer": answer,
+        "provider": "template",
+        "model": "",
+        "grounding": verifier.verify(answer).to_dict(),
+        "notice": "",
+        "cached": False,
+        "mode": mode,
+        "step": step,
+    })
+
+
 def meta() -> str:
     return json.dumps(_current.meta if _current else {})

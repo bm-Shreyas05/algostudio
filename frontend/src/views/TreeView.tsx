@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { treeLayout, type PlacedNode, type TreeNodeShape } from "../lib/layout";
-import { preview } from "../lib/format";
+import { preview, previewLive } from "../lib/format";
 import type { HeapObject } from "../api/types";
 import { MARK_COLORS, nodeAnnotations, type ViewProps } from "./types";
 
@@ -146,7 +146,7 @@ export function CallTreeView({ state }: { state: ViewProps["state"] }) {
     const shapes = new Map<number, TreeNodeShape>();
     for (const record of records) {
       const args = Object.entries(record.args ?? {})
-        .map(([, v]) => preview(v as any, 6))
+        .map(([, v]) => previewLive(v as any, state.heap, 6))
         .join(",");
       const shape: TreeNodeShape = {
         id: String(record.frame_id),
@@ -166,7 +166,7 @@ export function CallTreeView({ state }: { state: ViewProps["state"] }) {
     const layout = treeLayout(roots, 108, 54);
     const active = new Set(state.frames.map((f) => String(f.frame_id)));
     return { ...layout, activeIds: active };
-  }, [state.call_tree, state.frames]);
+  }, [state.call_tree, state.frames, state.heap]);
 
   if (!nodes.length) return <div className="view empty">no calls yet</div>;
   const byId = new Map(nodes.map((n) => [n.id, n]));

@@ -3,7 +3,7 @@ import type {
   Analytics, AsEvent, EncodedValue, ExecutionState, Frame,
 } from "../api/types";
 import {
-  categoryOf, CATEGORY_ORDER, formatMetric, preview, previewLive, renderHeap, summarize,
+  categoryOf, CATEGORY_ORDER, formatMetric, previewContents, previewLive, renderHeap, summarize,
 } from "../lib/format";
 
 /* ------------------------------------------------------------------ variables */
@@ -23,6 +23,15 @@ export function VariablesPanel({
   const globals = state.frames[0]?.locals ?? {};
   const showGlobals = state.frames.length > 1;
 
+  // At the end every function has returned, so only the module is left on
+  // the stack -- and a catalogue algorithm's module has no variables of its
+  // own. The panel used to say "No variables yet" at the very moment the
+  // answer was ready. Show what the outermost call finished with instead.
+  const finished = Boolean(state.finished_reason);
+  const lastCall = finished && Object.keys(frame?.locals ?? {}).length === 0
+    ? outermostReturned(state)
+    : null;
+
   const row = (name: string, value: EncodedValue, scope: string) => {
     const hit = changed && changed.name === name;
     const wasWritten = Boolean(hit && !changed!.created);
@@ -33,14 +42,23 @@ export function VariablesPanel({
         key={`${scope}-${name}`}
         className={wasWritten ? "changed" : wasCreated ? "created" : undefined}
       >
-        <td className="k" onClick={() => onInspect(name)} title="show where this changed">
-          {name}
+        <td className="k">
+          {/* A real button: this cell was clickable before, but only to a
+              mouse -- a keyboard could not reach it at all. */}
+          <button
+            type="button"
+            className="var-name"
+            onClick={() => onInspect(name)}
+            title={`Jump to where ${name} last changed, and ask the tutor about it`}
+          >
+            {name}
+          </button>
         </td>
         <td className="v">
           {wasWritten && changed!.old && (
             <span className="old">{previewLive(changed!.old, state.heap, 18)} →</span>
           )}{" "}
-          {previewLive(value, state.heap, 34)}
+          {previewContents(value, state.heap, 48)}
           {ref && (
             // Object identity, which is what makes aliasing visible: two
             // variables showing the same number are the same object. Shown as
@@ -63,47 +81,69 @@ export function VariablesPanel({
 
   return (
     <div className="panel-body variables">
+      {/* The call stack, as the breadcrumb it really is. It used to be a tab of
+          its own, which meant the values and the call they belonged to were
+          never on screen together. */}
+      {state.frames.length > 1 && (
+        <nav className="stack-crumbs" aria-label="Call stack">
+          {state.frames.map((f, i) => (
+            <span key={f.frame_id} className={i === state.frames.length - 1 ? "now" : ""}>
+              {f.name === "<module>" ? "program" : `${f.name}()`}
+            </span>
+          ))}
+        </nav>
+      )}
+      {state.exception && (
+        <div className="var-exception">
+          {state.exception.exc_type}: {state.exception.message}
+        </div>
+      )}
+      {finished && (
+        <p className="var-finished">
+          {lastCall ? (
+            <>
+              Finished. These are the values <code>{lastCall.name}()</code> ended with
+              {lastCall.return_value && (
+                <>; it returned <code>{previewContents(lastCall.return_value, state.heap, 48)}</code></>
+              )}.
+            </>
+          ) : Object.keys(frame?.locals ?? {}).length ? (
+            "Finished. These are the values the program ended with."
+          ) : (
+            "Finished. This program kept no variables."
+          )}
+        </p>
+      )}
       <table>
         <tbody>
           {Object.entries(frame?.locals ?? {}).map(([n, v]) => row(n, v, "local"))}
+          {lastCall && Object.entries(lastCall.locals).map(([n, v]) => row(n, v, "final"))}
           {showGlobals && Object.keys(globals).length > 0 && (
-            <tr className="section"><td colSpan={2}>globals</td></tr>
+            <tr className="section"><td colSpan={2}>outside any function</td></tr>
           )}
           {showGlobals && Object.entries(globals).map(([n, v]) => row(n, v, "global"))}
         </tbody>
       </table>
-      {Object.keys(frame?.locals ?? {}).length === 0 && !showGlobals && (
-        <div className="muted pad">no bindings yet</div>
+      {Object.keys(frame?.locals ?? {}).length === 0 && !showGlobals && !lastCall && !finished && (
+        <p className="tab-empty">No variables yet — they appear here as the program creates them.</p>
       )}
     </div>
   );
 }
 
-/* ----------------------------------------------------------------- call stack */
-export function CallStackPanel({ state }: { state: ExecutionState }) {
-  return (
-    <div className="panel-body callstack">
-      {[...state.frames].reverse().map((frame: Frame, i) => (
-        <div key={frame.frame_id} className={`frame${i === 0 ? " active" : ""}`}>
-          <span className="fname">{frame.name}</span>
-          <span className="fline">line {frame.line}</span>
-          {frame.return_value && (
-            <span className="fret">→ {preview(frame.return_value, 14)}</span>
-          )}
-        </div>
-      ))}
-      {state.exception && (
-        <div className="frame exception">
-          {state.exception.exc_type}: {state.exception.message}
-        </div>
-      )}
-    </div>
-  );
+/** The last call made from the top level of the program, once it has returned. */
+function outermostReturned(state: ExecutionState): Frame | null {
+  const moduleId = state.frames[0]?.frame_id ?? 0;
+  const calls = Object.values(state.retired)
+    .filter((f) => f.parent === moduleId)
+    .sort((a, b) => a.frame_id - b.frame_id);
+  return calls.length ? calls[calls.length - 1] : null;
 }
 
 /* ------------------------------------------------------------------- timeline */
-/** Fixed row height, so the virtualiser can map scroll offset to row index. */
-const ROW_HEIGHT = 18;
+/** Fixed row height, so the virtualiser can map scroll offset to row index.
+ *  24px, up from 18: at 12.5px text an 18px row left no air between lines. */
+const ROW_HEIGHT = 24;
 
 export function TimelinePanel({
   events, step, onSeek,
@@ -114,6 +154,9 @@ export function TimelinePanel({
 }) {
   const [filter, setFilter] = useState<Set<string>>(new Set());
   const [query, setQuery] = useState("");
+  // Ten category chips are a power tool. They stay one click away rather than
+  // occupying the top of the list for everyone.
+  const [showFilters, setShowFilters] = useState(false);
 
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -183,25 +226,46 @@ export function TimelinePanel({
   return (
     <div className="panel-body timeline">
       <div className="timeline-controls">
-        {present.map((cat) => (
-          <button
-            key={cat}
-            className={`chip-btn${filter.size === 0 || filter.has(cat) ? " on" : ""} cat-${cat}`}
-            onClick={() => toggle(cat)}
-          >
-            {cat}
-          </button>
-        ))}
         <input
           className="search"
           type="search"
-          aria-label="Search the timeline"
-          placeholder="search events…"
+          aria-label="Search the steps"
+          placeholder="Search steps…"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
-        <span className="muted">{rows.length} shown</span>
+        <button
+          type="button"
+          className={`chip-btn${showFilters || filter.size ? " on" : ""}`}
+          aria-expanded={showFilters}
+          onClick={() => setShowFilters((v) => !v)}
+        >
+          Filter{filter.size ? ` (${filter.size})` : ""}
+        </button>
+        <span className="muted tl-count">
+          {rows.length === events.length ? `${rows.length} steps` : `${rows.length} of ${events.length}`}
+        </span>
+        <span className="muted tl-hint">Click any step to jump to it</span>
       </div>
+      {showFilters && (
+        <div className="timeline-filters" role="group" aria-label="Show only">
+          {present.map((cat) => (
+            <button
+              key={cat}
+              className={`chip-btn${filter.has(cat) ? " on" : ""} cat-${cat}`}
+              aria-pressed={filter.has(cat)}
+              onClick={() => toggle(cat)}
+            >
+              {cat}
+            </button>
+          ))}
+          {filter.size > 0 && (
+            <button type="button" className="linkish" onClick={() => setFilter(new Set())}>
+              Show all
+            </button>
+          )}
+        </div>
+      )}
       <div
         className="timeline-rows"
         ref={scrollRef}
@@ -227,8 +291,9 @@ export function TimelinePanel({
               onClick={() => onSeek(index)}
               title={ev.meta?.origin === "lifted" ? "inferred from generic events" : undefined}
             >
-              <span className="tstep">{index}</span>
-              <span className="tline">{ev.loc?.line ?? ""}</span>
+              {/* One number, not two: an unlabelled event index beside an
+                  unlabelled line number read as a rendering fault. */}
+              <span className="tline" title="source line">{ev.loc?.line ? `L${ev.loc.line}` : ""}</span>
               <span className="ttext">{text}</span>
             </div>
           ))}
@@ -242,77 +307,178 @@ export function TimelinePanel({
 export function ConsolePanel({ state }: { state: ExecutionState }) {
   return (
     <div className="panel-body console">
-      <pre>{state.stdout || <span className="muted">no output yet</span>}</pre>
-      {state.stderr && <pre className="stderr">{state.stderr}</pre>}
+      {state.stdout || state.stderr ? (
+        <>
+          {state.stdout && <pre>{state.stdout}</pre>}
+          {state.stderr && <pre className="stderr">{state.stderr}</pre>}
+        </>
+      ) : (
+        <p className="tab-empty">
+          Nothing printed yet. Anything the program <code>print</code>s appears
+          here, up to the current step.
+        </p>
+      )}
     </div>
   );
 }
 
 /* ------------------------------------------------------------------ analytics */
+/**
+ * The measures worth showing, in plain words, in the order they matter.
+ *
+ * Anything the engine counts but no learner asks about -- how many conditions
+ * were evaluated, how many branches were taken, how many objects were
+ * allocated -- stays out unless an algorithm names it as its own measure.
+ */
+const MEASURES: Record<string, { one: string; many: string; hint: string }> = {
+  statements: {
+    one: "line run", many: "lines run",
+    hint: "Lines of code executed, counting a line again every time a loop repeats it.",
+  },
+  element_comparisons: {
+    one: "item comparison", many: "item comparisons",
+    hint: "Two items of the data compared with each other, such as arr[j] > arr[j + 1] — the usual way to measure the cost of sorting and searching.",
+  },
+  comparisons: {
+    one: "comparison", many: "comparisons",
+    hint: "Every comparison the program evaluated (<, >, ==, …), including ones between plain numbers.",
+  },
+  swaps: { one: "swap", many: "swaps", hint: "Two items exchanged in place." },
+  array_reads: {
+    one: "item read", many: "item reads",
+    hint: "One item read from a list or dictionary, such as arr[i].",
+  },
+  array_writes: {
+    one: "item write", many: "item writes",
+    hint: "One item stored into a list or dictionary, such as arr[i] = x.",
+  },
+  loop_iterations: {
+    one: "loop pass", many: "loop passes",
+    hint: "Times a loop body started, across every loop in the program.",
+  },
+  function_calls: {
+    one: "function call", many: "function calls",
+    hint: "Calls to functions the program defines.",
+  },
+  visits: { one: "node visited", many: "nodes visited", hint: "Nodes the algorithm finished with." },
+  discoveries: { one: "node discovered", many: "nodes discovered", hint: "Nodes reached for the first time." },
+  relaxations: {
+    one: "edge relaxation", many: "edge relaxations",
+    hint: "Edges checked for a shorter route.",
+  },
+  enqueues: { one: "enqueue", many: "enqueues", hint: "Items added to a queue." },
+  dequeues: { one: "dequeue", many: "dequeues", hint: "Items taken off a queue." },
+  // Counted from append() and pop(), whether or not the list is used as a stack.
+  pushes: { one: "append", many: "appends", hint: "Items added to the end of a list, such as order.append(x)." },
+  pops: { one: "pop", many: "pops", hint: "Items taken off a list with pop()." },
+  merges: { one: "merge", many: "merges", hint: "Sorted runs merged into one." },
+  partitions: { one: "partition", many: "partitions", hint: "Times a range was split around a pivot." },
+  // Shown only when an algorithm names one of these as its own measure.
+  conditions: {
+    one: "condition checked", many: "conditions checked",
+    hint: "Tests evaluated by if and while statements.",
+  },
+  mutations: {
+    one: "in-place change", many: "in-place changes",
+    hint: "Calls that changed a list, set or dictionary in place, such as append or pop.",
+  },
+  attribute_writes: {
+    one: "field write", many: "field writes",
+    hint: "Values stored into an object's fields, such as node.next = x.",
+  },
+};
+
+/** Always worth showing when non-zero; the rest only when an algorithm asks. */
+const EVERYDAY = [
+  "statements", "element_comparisons", "comparisons", "swaps", "array_reads",
+  "array_writes", "loop_iterations", "function_calls", "visits", "discoveries",
+  "relaxations", "enqueues", "dequeues", "pushes", "pops", "merges", "partitions",
+];
+
+function measureLabel(key: string, value: number): string {
+  const known = MEASURES[key];
+  if (known) return value === 1 ? known.one : known.many;
+  return formatMetric(key);
+}
+
 export function AnalyticsPanel({
-  analytics, state,
+  analytics, emphasis = [], canEdit = false,
 }: {
   analytics: Analytics;
-  state: ExecutionState;
+  /** The measures the loaded algorithm declares for itself, shown first. */
+  emphasis?: string[];
+  /** Whether "Edit code" exists here, so the note can point at it. */
+  canEdit?: boolean;
 }) {
-  const origins = analytics.event_origins ?? { recorded: 0, lifted: 0, semantic: 0 };
-  const total = Math.max(1, origins.recorded + origins.lifted + origins.semantic);
+  // What a learner compares between two algorithms: how much work each did.
+  // Where the engine's events came from and how long the sandbox took are
+  // facts about the tool, not the program, and stay out. So does the running
+  // "so far" tally that used to sit under the totals: the headline above the
+  // picture already counts up live as the run plays.
+  const values: Record<string, number> = { ...(analytics.metrics ?? {}) };
+  if (analytics.max_depth > 1) values.max_depth = analytics.max_depth;
+  // In most sorts every comparison *is* between two items, and "14 item
+  // comparisons" beside "14 comparisons" reads as the same fact twice.
+  if (values.element_comparisons === values.comparisons) delete values.element_comparisons;
+
+  const order = [
+    ...emphasis,
+    ...EVERYDAY,
+    ...(analytics.max_depth > 1 ? ["max_depth"] : []),
+  ];
+  const shown = order
+    .filter((key, i) => order.indexOf(key) === i)
+    .filter((key) => typeof values[key] === "number" && values[key] > 0);
+
+  // Per-function counts only say something when a function ran more than
+  // once -- "bubble_sort() 1" is not news.
+  const calls = Object.entries(analytics.function_calls ?? {});
+  const repeated = calls.some(([, count]) => count > 1);
+
   return (
     <div className="panel-body analytics">
+      <h4>Work done by the whole run</h4>
       <div className="metric-grid">
-        {Object.entries(analytics.metrics ?? {})
-          .sort(([a], [b]) => a.localeCompare(b))
-          .map(([key, value]) => (
-            <div key={key} className="metric">
-              <span className="mv">{value}</span>
-              <span className="mk">{formatMetric(key)}</span>
-            </div>
-          ))}
-        <div className="metric">
-          <span className="mv">{analytics.max_depth}</span>
-          <span className="mk">max depth</span>
-        </div>
-        <div className="metric">
-          <span className="mv">{analytics.duration_ms.toFixed(1)}</span>
-          <span className="mk">ms in sandbox</span>
-        </div>
+        {shown.map((key) => (
+          <div
+            key={key}
+            className={`metric${emphasis.includes(key) ? " key" : ""}`}
+            title={
+              key === "max_depth"
+                ? "The most calls that were waiting on one another at the same moment."
+                : MEASURES[key]?.hint
+            }
+          >
+            <span className="mv">{values[key].toLocaleString()}</span>
+            <span className="mk">
+              {key === "max_depth" ? "calls deep at most" : measureLabel(key, values[key])}
+            </span>
+          </div>
+        ))}
       </div>
+      {emphasis.length > 0 && (
+        <p className="stats-note">
+          Highlighted: what this algorithm is usually measured by.
+          {canEdit && (
+            <> To see how fast they grow, choose <strong>Edit code</strong> and
+            run it on a bigger input.</>
+          )}
+        </p>
+      )}
 
-      <h4>Where the events came from</h4>
-      <div className="origin-bar">
-        <span className="recorded" style={{ width: `${(origins.recorded / total) * 100}%` }} />
-        <span className="lifted" style={{ width: `${(origins.lifted / total) * 100}%` }} />
-        <span className="semantic" style={{ width: `${(origins.semantic / total) * 100}%` }} />
-      </div>
-      <div className="origin-legend">
-        <span><i className="recorded" /> recorded {origins.recorded}</span>
-        <span><i className="lifted" /> inferred {origins.lifted}</span>
-        <span><i className="semantic" /> annotated {origins.semantic}</span>
-      </div>
-
-      {Object.keys(analytics.function_calls ?? {}).length > 0 && (
+      {repeated && (
         <>
-          <h4>Calls</h4>
+          <h4>Calls to each function</h4>
           <div className="metric-grid">
-            {Object.entries(analytics.function_calls).map(([name, count]) => (
+            {calls.map(([name, count]) => (
               <div key={name} className="metric">
-                <span className="mv">{count}</span>
+                <span className="mv">{count.toLocaleString()}</span>
                 <span className="mk">{name}()</span>
               </div>
             ))}
           </div>
         </>
       )}
-
-      <h4>Live counters at step {state.step}</h4>
-      <div className="metric-grid">
-        {Object.entries(state.counters).map(([key, value]) => (
-          <div key={key} className="metric small">
-            <span className="mv">{value}</span>
-            <span className="mk">{formatMetric(key)}</span>
-          </div>
-        ))}
-      </div>
     </div>
   );
 }
