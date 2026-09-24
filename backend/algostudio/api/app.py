@@ -595,6 +595,13 @@ def _mount_frontend(app: FastAPI) -> None:
         # ~100 KB, so revalidating it is cheap and being stale is not.
         app.mount("/engine", _RevalidatedStatic(directory=str(engine)), name="engine")
 
+    # Pages answer HEAD as well as GET. Uptime monitors and link checkers
+    # probe with HEAD, and a 405 on the home page reads to them as "down".
+    # (The catch-all below stays GET-only, so a HEAD to an API path is still
+    # a 405 rather than a 404 claiming the endpoint does not exist.)
+    def page_route(path: str):
+        return app.api_route(path, methods=["GET", "HEAD"], include_in_schema=False)
+
     for url, filename in ROUTES.items():
         if not (dist / filename).is_file():
             continue
@@ -604,7 +611,7 @@ def _mount_frontend(app: FastAPI) -> None:
                 return page(filename)
             return handler
 
-        app.get(url, include_in_schema=False)(make())
+        page_route(url)(make())
 
         # /app.html and /app would otherwise be two URLs for one page, which
         # splits ranking signals.  The canonical tag says which one counts;
@@ -625,7 +632,7 @@ def _mount_frontend(app: FastAPI) -> None:
                 )
             return handler
 
-        app.get(f"/{name}", include_in_schema=False)(make_root())
+        page_route(f"/{name}")(make_root())
 
     @app.get("/{path:path}", include_in_schema=False)
     def not_found(path: str) -> Response:

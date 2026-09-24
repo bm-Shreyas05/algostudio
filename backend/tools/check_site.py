@@ -267,6 +267,14 @@ def main() -> int:
         if trailing.status_code != 301:
             fail(f"{url}/", f"should 301 to {url}, got {trailing.status_code}")
 
+    # ------------------------------------------------------------ HEAD
+    # Monitors and link checkers probe with HEAD; a 405 there looks like an
+    # outage even though every browser gets the page.
+    for url in [*ROUTES, "/robots.txt", "/sitemap.xml"]:
+        response = client.head(url)
+        if response.status_code != 200:
+            fail(url, f"HEAD returned {response.status_code}, not 200")
+
     # --------------------------------------------------------- caching
     head = client.get("/")
     if "must-revalidate" not in head.headers.get("cache-control", ""):
